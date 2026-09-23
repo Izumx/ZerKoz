@@ -17,7 +17,8 @@ MVP двустороннего сервиса:
 
 | Вопрос | Решение |
 |---|---|
-| Стек бэкенда | Python 3.11+, FastAPI, aiogram 3, SQLModel + SQLite, shapely |
+| Стек бэкенда | Python 3.11+, FastAPI, aiogram 3, SQLModel + PostgreSQL 16 (драйвер psycopg 3), shapely |
+| База данных | PostgreSQL. Геометрия участков — GeoJSON в колонке JSONB, point-in-polygon — shapely в `services/geo.py`. PostGIS не используется (нет в локальной установке и не на всех хостингах); переход на PostGIS (`geometry` + `ST_Contains` + GiST-индекс) затрагивает только `geo.py` и модель — пункт roadmap. Схема создаётся `SQLModel.metadata.create_all` (Alembic — вне MVP) |
 | Стек фронта | React + Vite + TypeScript, react-leaflet, i18next |
 | Архитектура | Монолит: один процесс (FastAPI + polling бота в общем asyncio-loop). Бот обращается к слою `services`, не к БД напрямую — позже выносится в отдельный сервис без переписывания |
 | Реалтайм | Server-Sent Events (`/api/events/stream`) |
@@ -33,7 +34,7 @@ backend/
   app/
     main.py            FastAPI-приложение, lifespan: init БД, запуск бота, раздача frontend/dist и uploads
     config.py          настройки из .env (BOT_TOKEN, DATABASE_URL, UPLOAD_DIR, PUBLIC_URL)
-    db.py              engine, сессии, init
+    db.py              engine (postgresql+psycopg), сессии, create_all; скрипт `python -m app.db create` создаёт БД, если её нет
     models.py          SQLModel-таблицы
     schemas.py         Pydantic-схемы ответов API
     events.py          in-process шина событий → SSE
@@ -71,11 +72,11 @@ README.md
 ## 4. Модель данных
 
 **Parcel (участок)**
-- `id`, `cadastral_no` (формат `06-097-123-456`), `purpose` (код назначения: ИЖС, сельхоз, коммерция, промышленность, ЛПХ), `area_ha`, `address`, `owner` (фиктивный арендатор/собственник), `geometry` (GeoJSON Polygon, JSON-строка)
+- `id`, `cadastral_no` (формат `06-097-123-456`, уникальный), `purpose` (код назначения: ИЖС, сельхоз, коммерция, промышленность, ЛПХ), `area_ha`, `address`, `owner` (фиктивный арендатор/собственник), `geometry` (GeoJSON Polygon, JSONB)
 - `lifecycle`: `none | detected | in_progress | resolved | returned`
 - `violation_type`: `null | unused | seizure | dump`
 - `deadline` (date, nullable), `inspection` флаг первичной проверки (`under_check: bool`)
-- `ndvi_series` (JSON — 12 месячных значений, симуляция), `updated_at`
+- `ndvi_series` (JSONB — 12 месячных значений, симуляция), `updated_at`
 
 **Цвет участка вычисляется (не хранится):**
 - 🔴 красный — `lifecycle ∈ {detected, in_progress}`
@@ -169,7 +170,7 @@ README.md
 
 ## 10. Тестирование
 
-pytest:
+pytest на реальном PostgreSQL: отдельная БД `<имя>_test` (создаётся фикстурой, таблицы пересоздаются на каждый тест-сеанс, данные чистятся между тестами). URL берётся из `TEST_DATABASE_URL` или выводится из `DATABASE_URL`.
 - `geo`: точка внутри/вне полигона, выбор участка.
 - `parcels`: допустимые и запрещённые переходы, вычисление цвета, просрочка.
 - `signals`: создание с привязкой, смена статуса вызывает notify (фейковый notifier), confirmed → участок `detected`.
@@ -179,10 +180,10 @@ pytest:
 
 ## 11. Сдача
 
-- `README.md`: описание, скриншоты, запуск в 3 шага (backend venv + `.env`, `npm run build`, `python -m app.main`), демо-сценарий, тестовые трек-номера.
+- `README.md`: описание, скриншоты, запуск (PostgreSQL + `DATABASE_URL` в `.env` → `python -m app.db create` → seed → `npm run build` → `python -m app.main`), демо-сценарий, тестовые трек-номера.
 - Сценарий 3-минутного видео (`docs/demo-script.md`).
 - PDF-презентация 8–10 слайдов: проблема → решение → демо-цикл → архитектура → UX → масштабирование (ЕГКН, eGov, Sentinel-2 NDVI, PostGIS, авторизация через ЭЦП) → команда.
 
 ## 12. Вне скоупа MVP
 
-Авторизация и роли, реальный спутниковый анализ, интеграция с ЕГКН/eGov, Docker-деплой (добавим, когда решим с хостингом), мобильная вёрстка панели сверх базовой адаптивности.
+Авторизация и роли, PostGIS и миграции Alembic, реальный спутниковый анализ, интеграция с ЕГКН/eGov, Docker-деплой (добавим, когда решим с хостингом), мобильная вёрстка панели сверх базовой адаптивности.
