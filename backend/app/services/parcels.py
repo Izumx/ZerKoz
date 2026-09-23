@@ -83,12 +83,12 @@ def update_parcel(session: Session, parcel_id: int, changes: dict) -> Parcel:
         parcel.lifecycle = new
         if new == "detected":
             parcel.under_check = False
-        history.log(session, "parcel", parcel.id, "lifecycle", {"from": old, "to": new})
+        history.log(session, "parcel", parcel.id, "lifecycle", {"from": old, "to": new, **changed})
         if new in CLOSED:
             from app.services import signals  # локальный импорт: signals зависит от parcels
 
             affected_signals = signals.resolve_confirmed_for_parcel(session, parcel.id)
-    if changed:
+    elif changed:
         history.log(session, "parcel", parcel.id, "updated", changed)
 
     parcel.updated_at = utcnow()
