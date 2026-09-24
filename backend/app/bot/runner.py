@@ -5,6 +5,7 @@
 """
 import asyncio
 import hashlib
+import html
 import logging
 
 from aiogram import Bot, Dispatcher
@@ -68,7 +69,7 @@ def make_application_notifier(bot: Bot, loop: asyncio.AbstractEventLoop):
     def notifier(app: Application, chat_id: int, lang: str) -> None:
         emoji, stage_name = stage(lang, app.stage)
         text = t(lang, "notify_application", code=app.track_no, type=APPLICATION_TYPES[lang][app.type],
-                 emoji=emoji, stage=stage_name, note=app.note_kz if lang == "kz" else app.note_ru)
+                 emoji=emoji, stage=stage_name, note=html.escape(app.note_kz if lang == "kz" else app.note_ru))
         _deliver(loop, bot.send_message(chat_id, text, reply_markup=kb.main_menu(lang)))
 
     return notifier

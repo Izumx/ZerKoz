@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { CircleMarker, GeoJSON, MapContainer, Marker, TileLayer, Tooltip, ZoomControl, useMap, useMapEvent } from 'react-leaflet'
 import type { ParcelCollection, ParcelFeature, RoutePlan, SignalItem } from '../api'
 import { HeatLayer, RouteLayer } from './MapLayers'
+import { escapeHtml } from '../format'
 import { useI18n } from '../i18n'
 import type { Selection } from '../App'
 
@@ -146,7 +147,7 @@ export default function MapView({ parcels, signals, version, selection, freshSig
             const feature = f as ParcelFeature
             layer.on('click', () => onSelect({ kind: 'parcel', id: feature.id }))
             layer.bindTooltip(
-              `<b class="mono">${feature.properties.cadastral_no}</b><br>${i.d.lifecycle[feature.properties.lifecycle]}`,
+              `<b class="mono">${escapeHtml(feature.properties.cadastral_no)}</b><br>${i.d.lifecycle[feature.properties.lifecycle]}`,
               { sticky: true, className: 'map-tip', direction: 'top', offset: [0, -8] },
             )
           }}

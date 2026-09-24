@@ -9,7 +9,7 @@ from app.models import Parcel, Signal
 from app.services import geo
 from app.services.parcels import compute_color, is_overdue, open_signal_counts
 
-MAX_STOPS = 12  # Google Maps принимает до ~10 промежуточных точек
+MAX_STOPS = 10  # ссылка Google Maps: старт + 9 промежуточных точек + финиш
 
 
 def _stops(session: Session) -> list[dict]:

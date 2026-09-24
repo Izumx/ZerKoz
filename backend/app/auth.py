@@ -15,8 +15,10 @@ from app.config import settings
 
 COOKIE = "zherkoz_session"
 TTL_SECONDS = 12 * 3600
-MAX_FAILURES = 10
+MAX_FAILURES = 10  # на один адрес
+MAX_GLOBAL_FAILURES = 30  # на все адреса вместе: X-Forwarded-For за прокси можно подделать
 FAILURE_WINDOW = 600
+GLOBAL = "*"
 
 _secret = (settings.secret_key or secrets.token_hex(32)).encode()
 _failures: dict[str, list[float]] = defaultdict(list)
@@ -50,12 +52,14 @@ def is_authenticated(request: Request) -> bool:
 
 def check_password(client: str, password: str) -> bool:
     now = time.time()
-    _failures[client] = [t for t in _failures[client] if now - t < FAILURE_WINDOW]
-    if len(_failures[client]) >= MAX_FAILURES:
+    for key in (client, GLOBAL):
+        _failures[key] = [t for t in _failures[key] if now - t < FAILURE_WINDOW]
+    if len(_failures[client]) >= MAX_FAILURES or len(_failures[GLOBAL]) >= MAX_GLOBAL_FAILURES:
         raise HTTPException(429, "Слишком много попыток входа, подождите 10 минут")
     ok = hmac.compare_digest(password.encode(), settings.inspector_password.encode())
     if not ok:
         _failures[client].append(now)
+        _failures[GLOBAL].append(now)
     return ok
 
 

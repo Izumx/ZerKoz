@@ -1,3 +1,4 @@
+from collections import defaultdict
 from datetime import timedelta
 
 from sqlalchemy import func
@@ -193,50 +194,67 @@ def after_status_change(signal: Signal) -> None:
     notify.signal_status_changed(signal)
 
 
-def _parcel_brief(session: Session, parcel_id: int | None) -> dict | None:
-    if parcel_id is None:
-        return None
-    p = session.get(Parcel, parcel_id)
-    return {"id": p.id, "cadastral_no": p.cadastral_no, "lifecycle": p.lifecycle} if p else None
+def _signal_dicts(session: Session, signals: list[Signal], *, full: bool) -> list[dict]:
+    """Сериализация пачкой: фиксированное число запросов на весь список, а не на каждый сигнал."""
+    if not signals:
+        return []
+    ids = [s.id for s in signals]
+    dups_by: dict[int, list[Signal]] = defaultdict(list)
+    for d in session.exec(select(Signal).where(Signal.duplicate_of.in_(ids)).order_by(Signal.id)).all():
+        dups_by[d.duplicate_of].append(d)
+    by_id = {s.id: s for s in signals} | {d.id: d for group in dups_by.values() for d in group}
+    photos_by: dict[int, list[Photo]] = defaultdict(list)
+    for p in session.exec(select(Photo).where(Photo.signal_id.in_(list(by_id))).order_by(Photo.id)).all():
+        owner = p.signal_id if p.signal_id in ids else by_id[p.signal_id].duplicate_of
+        photos_by[owner].append(p)
+    parcel_ids = {s.parcel_id for s in signals if s.parcel_id}
+    parcels = {p.id: p for p in session.exec(select(Parcel).where(Parcel.id.in_(parcel_ids))).all()} if parcel_ids else {}
+    primary_ids = {s.duplicate_of for s in signals if s.duplicate_of}
+    primary_codes = dict(session.exec(select(Signal.id, Signal.code).where(Signal.id.in_(primary_ids))).all()) \
+        if primary_ids else {}
+
+    result = []
+    for signal in signals:
+        group = [signal] + dups_by[signal.id]
+        parcel = parcels.get(signal.parcel_id)
+        data = {
+            "id": signal.id,
+            "code": signal.code,
+            "lat": signal.lat,
+            "lon": signal.lon,
+            "description": signal.description,
+            "source": signal.source,
+            "lang": signal.lang,
+            "status": signal.status,
+            "parcel": {"id": parcel.id, "cadastral_no": parcel.cadastral_no, "lifecycle": parcel.lifecycle}
+            if parcel else None,
+            "has_citizen": any(s.tg_chat_id is not None for s in group),
+            "duplicate_of": {"id": signal.duplicate_of, "code": primary_codes.get(signal.duplicate_of)}
+            if signal.duplicate_of else None,
+            "reports": len(group),
+            # ai_vision.analyze сам переносит уверенный вердикт ИИ сюда; «none» и низкая уверенность не подставляются
+            "suggested_violation": signal.suggested_violation,
+            "ai": signal.ai,
+            "photos": [
+                photo_dict(p, exif_check(p, by_id[p.signal_id].lat, by_id[p.signal_id].lon,
+                                         by_id[p.signal_id].created_at))
+                for p in photos_by[signal.id]
+            ],
+            "created_at": signal.created_at.isoformat(),
+            "updated_at": signal.updated_at.isoformat(),
+        }
+        if full:
+            data["duplicates"] = [
+                {"id": d.id, "code": d.code, "description": d.description, "created_at": d.created_at.isoformat()}
+                for d in dups_by[signal.id]
+            ]
+            data["history"] = history.for_entities(session, [("signal", s.id) for s in group])
+        result.append(data)
+    return result
 
 
 def signal_dict(session: Session, signal: Signal, *, full: bool = True) -> dict:
-    dups = duplicates_of(session, signal.id)
-    group = [signal] + dups
-    photos = session.exec(
-        select(Photo).where(Photo.signal_id.in_([s.id for s in group])).order_by(Photo.id)
-    ).all()
-    by_id = {s.id: s for s in group}
-    primary_code = session.get(Signal, signal.duplicate_of).code if signal.duplicate_of else None
-    data = {
-        "id": signal.id,
-        "code": signal.code,
-        "lat": signal.lat,
-        "lon": signal.lon,
-        "description": signal.description,
-        "source": signal.source,
-        "lang": signal.lang,
-        "status": signal.status,
-        "parcel": _parcel_brief(session, signal.parcel_id),
-        "has_citizen": any(s.tg_chat_id is not None for s in group),
-        "duplicate_of": {"id": signal.duplicate_of, "code": primary_code} if signal.duplicate_of else None,
-        "reports": len(group),
-        "suggested_violation": (signal.ai or {}).get("violation_type") or signal.suggested_violation,
-        "ai": signal.ai,
-        "photos": [
-            photo_dict(p, exif_check(p, by_id[p.signal_id].lat, by_id[p.signal_id].lon, by_id[p.signal_id].created_at))
-            for p in photos
-        ],
-        "created_at": signal.created_at.isoformat(),
-        "updated_at": signal.updated_at.isoformat(),
-    }
-    if full:
-        data["duplicates"] = [
-            {"id": d.id, "code": d.code, "description": d.description, "created_at": d.created_at.isoformat()}
-            for d in dups
-        ]
-        data["history"] = history.for_entities(session, [("signal", s.id) for s in group])
-    return data
+    return _signal_dicts(session, [signal], full=full)[0]
 
 
 def list_signals(session: Session, status: str | None = None) -> list[dict]:
@@ -244,4 +262,4 @@ def list_signals(session: Session, status: str | None = None) -> list[dict]:
     query = select(Signal).where(Signal.duplicate_of.is_(None)).order_by(Signal.created_at.desc())
     if status:
         query = query.where(Signal.status == status)
-    return [signal_dict(session, s, full=False) for s in session.exec(query).all()]
+    return _signal_dicts(session, list(session.exec(query).all()), full=False)

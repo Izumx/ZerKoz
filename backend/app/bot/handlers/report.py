@@ -43,7 +43,7 @@ async def start_report(message: Message, state: FSMContext) -> None:
 async def _accept_location(message: Message, state: FSMContext, lat: float, lon: float) -> None:
     lang = await _lang(message)
     parcel = await db_call(geo.find_parcel, lat=lat, lon=lon)
-    place = t(lang, "place_parcel", cad=parcel.cadastral_no) if parcel else t(lang, "report_outside")
+    place = t(lang, "place_parcel", cad=html.escape(parcel.cadastral_no)) if parcel else t(lang, "report_outside")
     await state.update_data(lat=lat, lon=lon, place=place, photos=[])
     await state.set_state(Report.photo)
     await message.answer(t(lang, "report_location_ok", place=place), reply_markup=kb.cancel_only(lang))

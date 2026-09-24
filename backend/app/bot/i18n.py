@@ -177,6 +177,7 @@ SIGNAL_STATUSES = {
 
 
 def t(lang: str, key: str, **kwargs) -> str:
+    """Шаблоны в HTML-разметке Telegram: пользовательские значения экранирует вызывающий код."""
     text = TEXTS.get(lang, TEXTS["ru"]).get(key) or TEXTS["ru"][key]
     return text.format(**kwargs) if kwargs else text
 

@@ -4,6 +4,7 @@
 (dataspace.copernicus.eu → User settings → OAuth clients). Облака, тени, снег и вода маскируются по слою SCL.
 """
 import logging
+import math
 import time
 from datetime import datetime, timezone
 
@@ -105,7 +106,8 @@ def fetch_series(geometry: dict) -> tuple[list[str], list[float | None]]:
         month = item["interval"]["from"][:7]
         stats = item.get("outputs", {}).get("ndvi", {}).get("bands", {}).get("B0", {}).get("stats", {})
         mean = stats.get("mean")
-        by_month[month] = round(mean, 3) if isinstance(mean, (int, float)) and stats.get("sampleCount") else None
+        valid = isinstance(mean, (int, float)) and math.isfinite(mean) and stats.get("sampleCount")
+        by_month[month] = round(mean, 3) if valid else None  # NaN (месяц целиком под облаками) в JSONB не пишется
     months = sorted(by_month)[-12:]
     return months, [by_month[m] for m in months]
 

@@ -5,6 +5,11 @@ type I18n = ReturnType<typeof useI18n>
 
 const DAY = 86_400_000
 
+/** Для строк, которые попадают в HTML Leaflet (тултипы, divIcon): данные участков могут прийти из импорта. */
+export function escapeHtml(text: string): string {
+  return text.replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]!)
+}
+
 export function todayISO(): string {
   const d = new Date()
   return new Date(d.getTime() - d.getTimezoneOffset() * 60_000).toISOString().slice(0, 10)

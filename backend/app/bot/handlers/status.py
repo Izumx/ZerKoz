@@ -1,3 +1,5 @@
+import html
+
 from aiogram import F, Router
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
@@ -25,7 +27,7 @@ def _signal_view(session: Session, code: str) -> tuple | None:
 
 def signal_place(lang: str, lat: float, lon: float, cadastral_no: str | None) -> str:
     if cadastral_no:
-        return t(lang, "place_parcel", cad=cadastral_no)
+        return t(lang, "place_parcel", cad=html.escape(cadastral_no))
     return t(lang, "place_point", lat=lat, lon=lon)
 
 
@@ -37,7 +39,7 @@ async def answer_status(message: Message, lang: str, kind: str, code: str) -> No
             return
         emoji, stage_name = stage(lang, app.stage)
         text = t(lang, "application_card", code=app.track_no, type=APPLICATION_TYPES[lang][app.type],
-                 emoji=emoji, stage=stage_name, note=app.note_kz if lang == "kz" else app.note_ru,
+                 emoji=emoji, stage=stage_name, note=html.escape(app.note_kz if lang == "kz" else app.note_ru),
                  updated=fmt_dt(app.updated_at))
         subscribed = await db_call(applications.is_subscribed, app.track_no, message.chat.id)
         await message.answer(text, reply_markup=kb.subscription(lang, app.track_no, subscribed))

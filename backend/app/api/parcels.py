@@ -7,7 +7,7 @@ from sqlmodel import Session
 from app.db import get_session
 from app.events import bus
 from app.services import history, parcels
-from app.services.photos import save_photo
+from app.services.photos import MAX_BYTES, save_photo
 
 router = APIRouter(tags=["parcels"])
 
@@ -51,7 +51,8 @@ def upload_photos(
     parcels.get_parcel(session, parcel_id)
     try:
         for f in files:
-            save_photo(session, f.file.read(), parcel_id=parcel_id, source="inspector")
+            # читаем не больше лимита + 1 байт: save_photo сам отклонит слишком большой файл
+            save_photo(session, f.file.read(MAX_BYTES + 1), parcel_id=parcel_id, source="inspector")
         history.log(session, "parcel", parcel_id, "photos", {"count": len(files)})
         session.commit()
     except Exception:

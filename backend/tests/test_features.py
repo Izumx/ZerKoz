@@ -224,3 +224,59 @@ def test_webhook_rejects_wrong_secret(monkeypatch):
     assert client.post("/tg/webhook", json={}).status_code == 403
     ok_header = {"X-Telegram-Bot-Api-Secret-Token": runner.webhook_secret("42:TEST")}
     assert client.post("/tg/webhook", json={}, headers=ok_header).status_code == 503  # бот ещё не запущен
+
+
+# ---------- регрессии из ревью ----------
+
+def test_ai_none_does_not_become_suggestion(session):
+    s = signals.create_signal(session, lat=42.0, lon=71.0, description="Свалка мусора")
+    s.ai = {"violation_type": "none", "confidence": "high", "summary_ru": "", "summary_kz": "", "model": "m"}
+    session.add(s)
+    session.commit()
+    assert signals.signal_dict(session, s)["suggested_violation"] == "dump"  # по описанию, не «none»
+
+
+def test_ndvi_nan_month_becomes_none(session, monkeypatch):
+    import httpx
+
+    from app.services import ndvi
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "openid-connect/token" in str(request.url):
+            return httpx.Response(200, json={"access_token": "t", "expires_in": 600})
+        body = ('{"data":[{"interval":{"from":"2026-01-01T00:00:00Z"},"outputs":{"ndvi":{"bands":{"B0":'
+                '{"stats":{"mean":NaN,"sampleCount":40}}}}}},{"interval":{"from":"2026-06-01T00:00:00Z"},'
+                '"outputs":{"ndvi":{"bands":{"B0":{"stats":{"mean":0.6,"sampleCount":40}}}}}}]}')
+        return httpx.Response(200, content=body, headers={"content-type": "application/json"})
+
+    real_client = httpx.Client
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=httpx.MockTransport(handler), **kw))
+    monkeypatch.setattr(settings, "copernicus_client_id", "id")
+    monkeypatch.setattr(settings, "copernicus_client_secret", "secret")
+    monkeypatch.setattr(ndvi, "_token", None)
+    p = make_parcel(session)
+    ndvi.refresh_parcel(session, p)  # не падает на записи NaN в JSONB
+    assert p.ndvi_series == [None, 0.6]
+
+
+def test_bot_escapes_application_note(session):
+    import asyncio
+    from datetime import datetime
+
+    from aiogram.types import Chat, Message
+
+    from app.bot.handlers.status import answer_status
+
+    session.add(Application(track_no="KZ-2026-042", applicant="И.", type="izhs", stage="review",
+                            note_ru="Срок < 10 дней, ТОО «А&Б»"))
+    session.commit()
+    sent = []
+
+    class FakeMessage:
+        chat = Chat(id=1, type="private")
+
+        async def answer(self, text, **kwargs):
+            sent.append(text)
+
+    asyncio.run(answer_status(FakeMessage(), "ru", "application", "KZ-2026-042"))
+    assert "Срок &lt; 10 дней, ТОО «А&amp;Б»" in sent[0]
