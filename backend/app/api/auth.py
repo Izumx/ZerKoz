@@ -23,6 +23,8 @@ def session_info(request: Request) -> dict:
         "auth_required": auth.auth_required(),
         "authenticated": authenticated,
         "demo_mode": settings.demo_mode,
+        "sentinel_enabled": bool(settings.copernicus_client_id and settings.copernicus_client_secret),
+        "ai_enabled": bool(settings.anthropic_api_key),
         "bot_username": runtime.bot_username if authenticated else None,
     }
 

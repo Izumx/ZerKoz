@@ -137,7 +137,8 @@ def test_panel_requires_password_when_set(session, monkeypatch):
     client = TestClient(app)
     assert client.get("/api/parcels").status_code == 401
     assert client.get("/api/session").json() == {
-        "auth_required": True, "authenticated": False, "demo_mode": True, "bot_username": None}
+        "auth_required": True, "authenticated": False, "demo_mode": True, "bot_username": None,
+        "sentinel_enabled": False, "ai_enabled": False}
     assert client.post("/api/login", json={"password": "wrong"}).status_code == 401
     assert client.post("/api/login", json={"password": "secret"}).status_code == 200
     assert client.get("/api/parcels").status_code == 200
@@ -164,3 +165,43 @@ def test_media_served_from_db(session):
     r = TestClient(app).get(f"/media/{photo.path}")
     assert r.status_code == 200 and r.headers["content-type"] == "image/jpeg"
     assert TestClient(app).get("/media/nope.jpg").status_code == 404
+
+
+# ---------- NDVI из Sentinel-2 (ответы Copernicus подменены) ----------
+
+def test_ndvi_refresh_parses_statistics(session, monkeypatch):
+    import httpx
+
+    from app.services import ndvi
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "openid-connect/token" in str(request.url):
+            return httpx.Response(200, json={"access_token": "t", "expires_in": 600})
+        if request.url.path == "/api/v1/statistics":
+            return httpx.Response(404)
+        assert request.headers["authorization"] == "Bearer t"
+        data = [{"interval": {"from": f"2026-{m:02d}-01T00:00:00Z"},
+                 "outputs": {"ndvi": {"bands": {"B0": {"stats": {"mean": 0.1 + m / 100, "sampleCount": 10}}}}}}
+                for m in range(1, 10)]
+        data.append({"interval": {"from": "2026-10-01T00:00:00Z"},
+                     "outputs": {"ndvi": {"bands": {"B0": {"stats": {"mean": "NaN", "sampleCount": 0}}}}}})
+        return httpx.Response(200, json={"data": data, "status": "OK"})
+
+    real_client = httpx.Client
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=httpx.MockTransport(handler), **kw))
+    monkeypatch.setattr(settings, "copernicus_client_id", "id")
+    monkeypatch.setattr(settings, "copernicus_client_secret", "secret")
+    monkeypatch.setattr(ndvi, "_token", None)
+
+    p = make_parcel(session, purpose="agri")
+    ndvi.refresh_parcel(session, p, flag_low=True)
+    assert p.ndvi_source == "sentinel-2"
+    assert p.ndvi_months[0] == "2026-01" and p.ndvi_series[-1] is None
+    assert p.under_check is True  # пик 0.19 < 0.25 — участок поставлен на проверку
+
+
+def test_ndvi_disabled_without_keys(session):
+    from app.services import ndvi
+
+    with pytest.raises(ndvi.NdviError):
+        ndvi.fetch_series({"type": "Polygon", "coordinates": []})

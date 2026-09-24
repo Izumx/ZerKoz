@@ -103,6 +103,8 @@ def test_citizen_report_flow_end_to_end(session):
         # статус заявления — номер можно прислать сразу, в свободной форме
         await h.send(text="kz 2026 42")
         assert "Назначен выезд инспектора" in h.last() and "Выезд 25.09" in h.last()
+        await h.press("sub:KZ-2026-042")  # подписка на изменения этапа
+        assert await asyncio.to_thread(_is_subscribed)
 
         # база знаний
         await h.send(text="📚 База знаний")
@@ -140,6 +142,14 @@ def test_citizen_report_flow_end_to_end(session):
     assert signal.tg_chat_id == CHAT.id and signal.parcel_id == parcel.id
     assert signal.description == "Свалка <мусора>"
     assert session.exec(select(Photo).where(Photo.signal_id == signal.id)).one().source == "citizen"
+
+
+def _is_subscribed() -> bool:
+    from app import db
+    from app.services import applications
+
+    with db.new_session() as s:
+        return applications.is_subscribed(s, "KZ-2026-042", CHAT.id)
 
 
 def _confirm_signal():

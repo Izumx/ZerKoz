@@ -24,7 +24,7 @@ async def knowledge_article(callback: CallbackQuery) -> None:
     lang = await get_lang(callback.message.chat.id) or "ru"
     key = callback.data.split(":", 1)[1]
     if key in ARTICLES:
-        await callback.message.edit_text(ARTICLES[key][lang]["body"], reply_markup=kb.knowledge_article(lang),
+        await callback.message.edit_text(ARTICLES[key][lang]["body"], reply_markup=kb.knowledge_article(lang, key),
                                          disable_web_page_preview=True)
     else:
         await callback.message.edit_text(t(lang, "kb_intro"), reply_markup=kb.knowledge_menu(lang))

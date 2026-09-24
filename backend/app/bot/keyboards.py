@@ -35,9 +35,9 @@ def knowledge_menu(lang: str) -> InlineKeyboardMarkup:
     ])
 
 
-def knowledge_article(lang: str) -> InlineKeyboardMarkup:
+def knowledge_article(lang: str, key: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=t(lang, "btn_egov"), url=EGOV[lang])],
+        [InlineKeyboardButton(text=t(lang, "btn_egov"), url=ARTICLES[key][lang].get("url", EGOV[lang]))],
         [InlineKeyboardButton(text=t(lang, "btn_back"), callback_data="kb:menu")],
     ])
 

@@ -35,6 +35,15 @@ def patch_parcel(parcel_id: int, body: ParcelPatch, session: Session = Depends(g
     return parcels.parcel_detail(session, parcel_id)
 
 
+@router.post("/parcels/{parcel_id}/ndvi")
+def refresh_ndvi(parcel_id: int, session: Session = Depends(get_session)) -> dict:
+    """Загрузить реальный NDVI из Sentinel-2 (нужны ключи Copernicus)."""
+    from app.services import ndvi
+
+    ndvi.refresh_parcel(session, parcels.get_parcel(session, parcel_id))
+    return parcels.parcel_detail(session, parcel_id)
+
+
 @router.post("/parcels/{parcel_id}/photos")
 def upload_photos(
     parcel_id: int, files: list[UploadFile] = File(...), session: Session = Depends(get_session)
