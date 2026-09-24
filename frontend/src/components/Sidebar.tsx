@@ -1,11 +1,13 @@
 import { useMemo } from 'react'
-import type { Color, ParcelFeature, SignalItem, SignalStatus, Stats } from '../api'
-import type { Selection } from '../App'
+import type { Color, ParcelFeature, RoutePlan, SignalItem, SignalStatus, Stats } from '../api'
+import type { Notify, Selection } from '../App'
+import ApplicationsPanel from './ApplicationsPanel'
+import RoutePanel from './RoutePanel'
 import { deadlineLabel, formatArea, timeAgo } from '../format'
 import { useI18n } from '../i18n'
 
 export type ColorFilter = 'all' | Color | 'overdue'
-export type Tab = 'parcels' | 'signals'
+export type Tab = 'parcels' | 'signals' | 'applications' | 'route'
 type SignalFilter = 'open' | SignalStatus | 'all'
 
 interface Props {
@@ -23,6 +25,9 @@ interface Props {
   selection: Selection | null
   freshSignals: Set<number>
   onPick: (selection: Selection) => void
+  notify: Notify
+  version: number
+  route: RoutePlan | null
 }
 
 const RANK: Record<Color, number> = { red: 0, yellow: 1, green: 2 }
@@ -86,9 +91,19 @@ export default function Sidebar(props: Props) {
           {i.t('tabSignals')}
           {stats && stats.signals_new > 0 && <span className="count count--hot">{stats.signals_new}</span>}
         </button>
+        <button role="tab" aria-selected={tab === 'applications'} className={tab === 'applications' ? 'is-active' : ''} onClick={() => props.onTab('applications')}>
+          {i.t('tabApplications')}
+        </button>
+        <button role="tab" aria-selected={tab === 'route'} className={tab === 'route' ? 'is-active' : ''} onClick={() => props.onTab('route')}>
+          {i.t('tabRoute')}
+        </button>
       </div>
 
-      {tab === 'parcels' ? (
+      {tab === 'applications' ? (
+        <ApplicationsPanel notify={props.notify} version={props.version} />
+      ) : tab === 'route' ? (
+        <RoutePanel plan={props.route} onPick={props.onPick} />
+      ) : tab === 'parcels' ? (
         <>
           <div className="filters">
             <input
@@ -159,6 +174,8 @@ export default function Sidebar(props: Props) {
                       <span className="row__title">
                         <span className="mono">{s.code}</span>
                         <span className={`badge badge--${s.status}`}>{i.d.signalStatus[s.status]}</span>
+                        {s.reports > 1 && <span className="badge badge--reports">👥 {s.reports}</span>}
+                        {s.ai && s.ai.violation_type !== 'none' && <span className="badge badge--ai">✦</span>}
                       </span>
                       <span className="row__sub clamp">{s.description || '—'}</span>
                       <span className="row__meta">

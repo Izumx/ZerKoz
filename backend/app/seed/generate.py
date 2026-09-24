@@ -213,13 +213,14 @@ def main() -> None:
     parser.add_argument("--reset", action="store_true", help="удалить все данные и сгенерировать заново")
     args = parser.parse_args()
     db.ensure_database(settings.database_url)
-    db.init_db()
     with db.new_session() as session:
-        if session.exec(select(Parcel)).first() and not args.reset:
-            print("Данные уже есть. Для пересоздания: python -m app.seed.generate --reset")
-            return
-        if args.reset:
+        if args.reset:  # сначала сброс — старая схема могла не совпадать с моделями
             reset(session)
+        else:
+            db.init_db()
+            if session.exec(select(Parcel)).first():
+                print("Данные уже есть. Для пересоздания: python -m app.seed.generate --reset")
+                return
     with db.new_session() as session:
         generate(session)
         n_parcels = len(session.exec(select(Parcel)).all())

@@ -1,5 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { api, type Health, type ParcelCollection, type SignalItem, type Stats } from './api'
+import {
+  api,
+  setUnauthorizedHandler,
+  type ParcelCollection,
+  type RoutePlan,
+  type SessionInfo,
+  type SignalItem,
+  type Stats,
+} from './api'
+import ActView from './components/ActView'
+import Login from './components/Login'
 import MapView, { type Focus } from './components/MapView'
 import ParcelCard from './components/ParcelCard'
 import Sidebar, { type ColorFilter, type Tab } from './components/Sidebar'
@@ -19,12 +29,37 @@ interface Toast {
 
 const FRESH_MS = 60_000
 
+/** Корень: проверка сессии → экран входа, печатный акт или рабочее место инспектора. */
 export default function App() {
+  const params = new URLSearchParams(window.location.search)
+  const actId = Number(params.get('act')) || null
+  const [session, setSession] = useState<SessionInfo | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const i = useI18n()
+
+  const loadSession = useCallback(() => {
+    api.session().then(setSession).catch((e) => setError(e.message))
+  }, [])
+
+  useEffect(() => {
+    const lang = params.get('lang')
+    if (lang === 'kz' || lang === 'ru') i.setLang(lang)
+    loadSession()
+    setUnauthorizedHandler(() => setSession((s) => (s ? { ...s, authenticated: false } : s)))
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (!session) return <div className="stage__placeholder">{error ?? '…'}</div>
+  if (!session.authenticated) return <Login onSuccess={loadSession} />
+  if (actId) return <ActView id={actId} />
+  return <Workspace session={session} onLogout={() => api.logout().finally(loadSession)} />
+}
+
+function Workspace({ session, onLogout }: { session: SessionInfo; onLogout: () => void }) {
   const i = useI18n()
   const [parcels, setParcels] = useState<ParcelCollection | null>(null)
   const [signals, setSignals] = useState<SignalItem[]>([])
   const [stats, setStats] = useState<Stats | null>(null)
-  const [health, setHealth] = useState<Health | null>(null)
+  const [route, setRoute] = useState<RoutePlan | null>(null)
   const [version, setVersion] = useState(0)
   const [selection, setSelection] = useState<Selection | null>(null)
   const [focus, setFocus] = useState<Focus | null>(null)
@@ -40,6 +75,8 @@ export default function App() {
   parcelsRef.current = parcels
   const signalsRef = useRef(signals)
   signalsRef.current = signals
+  const tabRef = useRef(tab)
+  tabRef.current = tab
 
   const pushToast = useCallback((toast: Omit<Toast, 'id'>, ttl = 4500) => {
     const id = Date.now() + Math.random()
@@ -56,6 +93,7 @@ export default function App() {
       setStats(st)
       setVersion((v) => v + 1)
       setLoadError(null)
+      if (tabRef.current === 'route') setRoute(await api.route())
     } catch (e) {
       setLoadError((e as Error).message)
     }
@@ -69,10 +107,12 @@ export default function App() {
 
   useEffect(() => {
     refresh()
-    api.health().then(setHealth).catch(() => undefined)
-    const timer = window.setInterval(() => api.health().then(setHealth).catch(() => undefined), 30_000)
-    return () => window.clearInterval(timer)
   }, [refresh])
+
+  useEffect(() => {
+    if (tab === 'route') api.route().then(setRoute).catch((e) => notify('error', e.message))
+    else setRoute(null)
+  }, [tab, notify])
 
   const pick = useCallback((sel: Selection) => {
     setSelection(sel)
@@ -82,6 +122,11 @@ export default function App() {
     } else {
       const signal = signalsRef.current.find((s) => s.id === sel.id)
       if (signal) setFocus({ key: Date.now(), kind: 'point', lat: signal.lat, lon: signal.lon })
+      else
+        api
+          .signal(sel.id)
+          .then((s) => setFocus({ key: Date.now(), kind: 'point', lat: s.lat, lon: s.lon }))
+          .catch(() => undefined)
     }
   }, [])
 
@@ -146,14 +191,16 @@ export default function App() {
           <span className={`live ${connected ? 'is-on' : ''}`}>
             <span className="live__dot" /> {connected ? i.t('live') : i.t('offline')}
           </span>
-          {health?.bot_username && (
-            <a className="bot-link" href={`https://t.me/${health.bot_username}`} target="_blank" rel="noreferrer" title={i.t('botLink')}>
-              <span aria-hidden>✈</span> @{health.bot_username}
+          {session.bot_username && (
+            <a className="bot-link" href={`https://t.me/${session.bot_username}`} target="_blank" rel="noreferrer" title={i.t('botLink')}>
+              <span aria-hidden>✈</span> @{session.bot_username}
             </a>
           )}
-          <button className="btn btn--demo" onClick={demo} disabled={demoBusy}>
-            {demoBusy ? i.t('demoSending') : `⚡ ${i.t('demoSignal')}`}
-          </button>
+          {session.demo_mode && (
+            <button className="btn btn--demo" onClick={demo} disabled={demoBusy}>
+              {demoBusy ? i.t('demoSending') : `⚡ ${i.t('demoSignal')}`}
+            </button>
+          )}
           <div className="lang-switch" role="group" aria-label="Язык / Тіл">
             {(['kz', 'ru'] as const).map((l) => (
               <button key={l} className={i.lang === l ? 'is-active' : ''} onClick={() => i.setLang(l)} aria-pressed={i.lang === l}>
@@ -161,6 +208,11 @@ export default function App() {
               </button>
             ))}
           </div>
+          {session.auth_required && (
+            <button className="bot-link logout" onClick={onLogout}>
+              {i.t('logout')}
+            </button>
+          )}
         </div>
       </header>
 
@@ -180,6 +232,9 @@ export default function App() {
           selection={selection}
           freshSignals={fresh}
           onPick={pick}
+          notify={notify}
+          version={version}
+          route={route}
         />
 
         <main className="stage">
@@ -191,6 +246,7 @@ export default function App() {
               selection={selection}
               freshSignals={fresh}
               focus={focus}
+              route={tab === 'route' ? route : null}
               onSelect={pick}
             />
           ) : (
@@ -200,7 +256,7 @@ export default function App() {
           {selection && (
             <aside className="drawer" key={`${selection.kind}-${selection.id}`}>
               {selection.kind === 'parcel' ? (
-                <ParcelCard id={selection.id} {...drawerProps} />
+                <ParcelCard id={selection.id} sentinelEnabled={session.sentinel_enabled} {...drawerProps} />
               ) : (
                 <SignalCard id={selection.id} {...drawerProps} />
               )}
@@ -216,12 +272,15 @@ export default function App() {
               {toast.signal?.photos[0] && <img src={toast.signal.photos[0].url} alt="" />}
               <div className="toast__body">
                 <strong>{toast.text}</strong>
-                <span className="clamp">{toast.signal?.description || i.t('newSignalBody')}</span>
+                <span className="clamp">
+                  {toast.signal?.duplicate_of ? `↳ ${toast.signal.duplicate_of.code} · ` : ''}
+                  {toast.signal?.description || i.t('newSignalBody')}
+                </span>
                 {toast.signal && (
                   <button
                     className="btn btn--primary btn--sm"
                     onClick={() => {
-                      pick({ kind: 'signal', id: toast.signal!.id })
+                      pick({ kind: 'signal', id: toast.signal!.duplicate_of?.id ?? toast.signal!.id })
                       setToasts((list) => list.filter((x) => x.id !== toast.id))
                     }}
                   >

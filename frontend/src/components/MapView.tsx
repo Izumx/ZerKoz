@@ -1,7 +1,8 @@
 import L from 'leaflet'
 import { useEffect, useMemo, useState } from 'react'
 import { CircleMarker, GeoJSON, MapContainer, Marker, TileLayer, Tooltip, ZoomControl, useMap, useMapEvent } from 'react-leaflet'
-import type { ParcelCollection, ParcelFeature, SignalItem } from '../api'
+import type { ParcelCollection, ParcelFeature, RoutePlan, SignalItem } from '../api'
+import { HeatLayer, RouteLayer } from './MapLayers'
 import { useI18n } from '../i18n'
 import type { Selection } from '../App'
 
@@ -119,12 +120,14 @@ interface Props {
   selection: Selection | null
   freshSignals: Set<number>
   focus: Focus | null
+  route: RoutePlan | null
   onSelect: (selection: Selection) => void
 }
 
-export default function MapView({ parcels, signals, version, selection, freshSignals, focus, onSelect }: Props) {
+export default function MapView({ parcels, signals, version, selection, freshSignals, focus, route, onSelect }: Props) {
   const i = useI18n()
   const [base, setBase] = useState<Base>('scheme')
+  const [heat, setHeat] = useState(false)
   // начальный вид вычисляется один раз, дальше карту двигает пользователь
   const [bounds] = useState(() => L.geoJSON(parcels as GeoJSON.FeatureCollection).getBounds().pad(0.05))
   const selectedParcel = selection?.kind === 'parcel' ? selection.id : null
@@ -164,6 +167,8 @@ export default function MapView({ parcels, signals, version, selection, freshSig
               </Tooltip>
             </Marker>
           ))}
+        {heat && <HeatLayer signals={signals} />}
+        {route && <RouteLayer plan={route} />}
         <FocusController focus={focus} />
       </MapContainer>
 
@@ -173,6 +178,9 @@ export default function MapView({ parcels, signals, version, selection, freshSig
             {b === 'scheme' ? i.t('baseScheme') : i.t('baseSatellite')}
           </button>
         ))}
+        <button className={heat ? 'is-active' : ''} onClick={() => setHeat((h) => !h)} aria-pressed={heat}>
+          🔥 {i.t('heatmap')}
+        </button>
       </div>
 
       <div className="legend">

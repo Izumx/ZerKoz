@@ -4,6 +4,7 @@ export type LiveEvent =
   | { type: 'signal.created'; data: { id: number; code: string; lat: number; lon: number; parcel_id: number | null } }
   | { type: 'signal.updated'; data: { id: number; code: string; status: string } }
   | { type: 'parcel.updated'; data: { id: number } }
+  | { type: 'application.updated'; data: { track_no: string } }
   | { type: 'resync'; data: null }
 
 /** Подписка на Server-Sent Events. EventSource сам переподключается; после переподключения шлём resync. */

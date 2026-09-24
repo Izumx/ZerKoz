@@ -12,11 +12,12 @@ interface Props {
   onChanged: () => void
   onPick: (selection: Selection) => void
   notify: Notify
+  sentinelEnabled: boolean
 }
 
 const VIOLATIONS: ViolationType[] = ['unused', 'seizure', 'dump']
 
-export default function ParcelCard({ id, version, onClose, onChanged, onPick, notify }: Props) {
+export default function ParcelCard({ id, version, onClose, onChanged, onPick, notify, sentinelEnabled }: Props) {
   const i = useI18n()
   const [parcel, setParcel] = useState<ParcelDetail | null>(null)
 
@@ -59,6 +60,9 @@ export default function ParcelCard({ id, version, onClose, onChanged, onPick, no
           <strong>{i.d.lifecycle[parcel.lifecycle]}</strong>
           {parcel.violation_type && parcel.lifecycle !== 'none' && <span>· {i.d.violation[parcel.violation_type]}</span>}
           {parcel.under_check && <span>· {i.t('underCheckNote')}</span>}
+          <a className="btn btn--ghost btn--sm status-line__act" href={`/?act=${parcel.id}&lang=${i.lang}`} target="_blank" rel="noreferrer">
+            🖨 {i.t('act')}
+          </a>
         </div>
 
         <dl className="facts">
@@ -92,7 +96,7 @@ export default function ParcelCard({ id, version, onClose, onChanged, onPick, no
                   <button className="mini-row" onClick={() => onPick({ kind: 'signal', id: s.id })}>
                     <span className="mono">{s.code}</span>
                     <span className={`badge badge--${s.status}`}>{i.d.signalStatus[s.status]}</span>
-                    <span className="clamp muted">{s.description}</span>
+                    <span className="clamp muted">{s.duplicate ? '↳ ' : ''}{s.description}</span>
                     <span className="muted small">{timeAgo(i, s.created_at)}</span>
                   </button>
                 </li>
@@ -113,7 +117,24 @@ export default function ParcelCard({ id, version, onClose, onChanged, onPick, no
             }
           }}
         />
-        <Ndvi series={parcel.ndvi_series} />
+        <Ndvi
+          series={parcel.ndvi_series}
+          months={parcel.ndvi_months}
+          source={parcel.ndvi_source}
+          onRefresh={
+            sentinelEnabled
+              ? async () => {
+                  try {
+                    setParcel(await api.refreshNdvi(id))
+                    notify('ok', i.t('ndviUpdated'))
+                    onChanged()
+                  } catch (e) {
+                    notify('error', (e as Error).message)
+                  }
+                }
+              : undefined
+          }
+        />
         <History items={parcel.history} />
       </div>
     </>

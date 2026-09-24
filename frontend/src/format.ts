@@ -73,6 +73,10 @@ export function historyText(i: I18n, item: HistoryItem): string {
       })
     case 'photos':
       return i.t('hPhotos', { count: Number(p.count) })
+    case 'duplicate':
+      return i.t('hDuplicate', { code: String(p.code) })
+    case 'ndvi_low':
+      return i.t('hNdviLow', { peak: Number(p.peak).toFixed(2) })
     default:
       return i.t('hUpdated')
   }

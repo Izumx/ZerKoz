@@ -3,6 +3,7 @@ export type Lifecycle = 'none' | 'detected' | 'in_progress' | 'resolved' | 'retu
 export type ViolationType = 'unused' | 'seizure' | 'dump'
 export type SignalStatus = 'new' | 'checking' | 'confirmed' | 'rejected' | 'resolved'
 export type Purpose = 'izhs' | 'agri' | 'commercial' | 'industrial' | 'lph'
+export type Stage = 'review' | 'inspection' | 'approved' | 'rejected'
 
 export interface ParcelProps {
   id: number
@@ -33,28 +34,53 @@ export interface ParcelCollection {
   features: ParcelFeature[]
 }
 
+export interface ExifCheck {
+  status: 'ok' | 'far' | 'old' | 'no_gps' | 'none'
+  distance_m?: number
+  age_days?: number
+  taken_at?: string | null
+}
+
 export interface Photo {
   id: number
   url: string
   source: 'inspector' | 'citizen'
   signal_id: number | null
   created_at: string
+  exif_check?: ExifCheck
 }
 
 export interface HistoryItem {
   entity: 'parcel' | 'signal'
   entity_id: number
-  action: 'created' | 'status' | 'lifecycle' | 'updated' | 'photos'
+  action: 'created' | 'status' | 'lifecycle' | 'updated' | 'photos' | 'duplicate' | 'ndvi_low'
   payload: Record<string, string | number | boolean | null>
   created_at: string
 }
 
 export interface ParcelDetail extends ParcelProps {
   geometry: GeoJSON.Polygon
-  ndvi_series: number[]
+  ndvi_series: (number | null)[]
+  ndvi_months: string[]
+  ndvi_source: 'simulation' | 'sentinel-2'
   photos: Photo[]
-  signals: { id: number; code: string; status: SignalStatus; description: string; created_at: string }[]
+  signals: {
+    id: number
+    code: string
+    status: SignalStatus
+    description: string
+    duplicate: boolean
+    created_at: string
+  }[]
   history: HistoryItem[]
+}
+
+export interface AiSuggestion {
+  violation_type: ViolationType | 'none'
+  confidence: 'low' | 'medium' | 'high'
+  summary_ru: string
+  summary_kz: string
+  model: string
 }
 
 export interface SignalItem {
@@ -68,10 +94,42 @@ export interface SignalItem {
   status: SignalStatus
   parcel: { id: number; cadastral_no: string; lifecycle: Lifecycle } | null
   has_citizen: boolean
+  duplicate_of: { id: number; code: string } | null
+  reports: number
+  suggested_violation: ViolationType | null
+  ai: AiSuggestion | null
   photos: Photo[]
   created_at: string
   updated_at: string
+  duplicates?: { id: number; code: string; description: string; created_at: string }[]
   history?: HistoryItem[]
+}
+
+export interface Application {
+  track_no: string
+  applicant: string
+  type: 'change_purpose' | 'lease_extension' | 'izhs'
+  stage: Stage
+  note_ru: string
+  note_kz: string
+  subscribers: number
+  updated_at: string
+}
+
+export interface RouteStop {
+  kind: 'parcel' | 'signal'
+  id: number
+  label: string
+  address: string
+  reason: 'overdue' | 'check' | 'signal'
+  lat: number
+  lon: number
+}
+
+export interface RoutePlan {
+  start: { lat: number; lon: number }
+  stops: RouteStop[]
+  distance_km: number
 }
 
 export interface Stats {
@@ -85,8 +143,12 @@ export interface Stats {
   signals_24h: number
 }
 
-export interface Health {
-  ok: boolean
+export interface SessionInfo {
+  auth_required: boolean
+  authenticated: boolean
+  demo_mode: boolean
+  sentinel_enabled: boolean
+  ai_enabled: boolean
   bot_username: string | null
 }
 
@@ -103,14 +165,21 @@ export class ApiError extends Error {
   }
 }
 
+/** Вызывается при ответе 401 — приложение показывает экран входа. */
+let onUnauthorized: () => void = () => undefined
+export function setUnauthorizedHandler(handler: () => void) {
+  onUnauthorized = handler
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response
   try {
-    response = await fetch(path, init)
+    response = await fetch(path, { credentials: 'same-origin', ...init })
   } catch {
     throw new ApiError('Сервер недоступен', 0)
   }
   if (!response.ok) {
+    if (response.status === 401 && !path.endsWith('/login')) onUnauthorized()
     let message = response.statusText
     try {
       message = (await response.json()).detail ?? message
@@ -129,9 +198,13 @@ const json = (method: string, body: unknown): RequestInit => ({
 })
 
 export const api = {
+  session: () => request<SessionInfo>('/api/session'),
+  login: (password: string) => request<{ ok: boolean }>('/api/login', json('POST', { password })),
+  logout: () => request<{ ok: boolean }>('/api/logout', { method: 'POST' }),
   parcels: () => request<ParcelCollection>('/api/parcels'),
   parcel: (id: number) => request<ParcelDetail>(`/api/parcels/${id}`),
   patchParcel: (id: number, patch: ParcelPatch) => request<ParcelDetail>(`/api/parcels/${id}`, json('PATCH', patch)),
+  refreshNdvi: (id: number) => request<ParcelDetail>(`/api/parcels/${id}/ndvi`, { method: 'POST' }),
   uploadPhotos: (id: number, files: File[]) => {
     const form = new FormData()
     files.forEach((f) => form.append('files', f))
@@ -141,7 +214,10 @@ export const api = {
   signal: (id: number) => request<SignalItem>(`/api/signals/${id}`),
   patchSignal: (id: number, status: SignalStatus, violation_type?: ViolationType) =>
     request<SignalItem>(`/api/signals/${id}`, json('PATCH', { status, violation_type })),
+  applications: () => request<Application[]>('/api/applications'),
+  patchApplication: (track: string, patch: Partial<Pick<Application, 'stage' | 'note_ru' | 'note_kz'>>) =>
+    request<Application>(`/api/applications/${track}`, json('PATCH', patch)),
+  route: () => request<RoutePlan>('/api/route'),
   stats: () => request<Stats>('/api/stats'),
-  health: () => request<Health>('/api/health'),
   demoSignal: () => request<SignalItem>('/api/demo/signal', { method: 'POST' }),
 }
