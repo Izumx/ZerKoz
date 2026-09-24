@@ -6,20 +6,32 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from sqlmodel import select
 
-from app.api import router as api_router
+from app.api import routers
 from app.config import settings
-from app.db import init_db
+from app.db import init_db, session_scope
 from app.services import NotFound, ServiceError
 from app.services.photos import PhotoError
 
 log = logging.getLogger("zherkoz")
 
 
+def _seed_if_empty() -> None:
+    from app.models import Parcel
+    from app.seed.generate import generate
+
+    with session_scope() as session:
+        if session.exec(select(Parcel)).first() is None:
+            log.info("БД пуста — генерирую демо-данные (SEED_ON_START=true)")
+            generate(session)
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     init_db()
-    settings.upload_dir.mkdir(parents=True, exist_ok=True)
+    if settings.seed_on_start:
+        await asyncio.to_thread(_seed_if_empty)
     bot_task = None
     if settings.bot_token:
         from app.bot.runner import run_bot
@@ -27,6 +39,8 @@ async def lifespan(_: FastAPI):
         bot_task = asyncio.create_task(run_bot(settings.bot_token))
     else:
         log.warning("BOT_TOKEN не задан — Telegram-бот не запущен, работает только веб-панель")
+    if not settings.inspector_password:
+        log.warning("INSPECTOR_PASSWORD не задан — панель инспектора открыта без пароля")
     yield
     if bot_task:
         bot_task.cancel()
@@ -36,7 +50,7 @@ async def lifespan(_: FastAPI):
             pass
 
 
-app = FastAPI(title="ЖерКөз API", version="1.0", lifespan=lifespan)
+app = FastAPI(title="ЖерКөз API", version="1.1", lifespan=lifespan)
 
 
 @app.exception_handler(NotFound)
@@ -54,9 +68,17 @@ async def _conflict(_: Request, exc: ServiceError):
     return JSONResponse({"detail": str(exc)}, status_code=409)
 
 
-app.include_router(api_router)
-settings.upload_dir.mkdir(parents=True, exist_ok=True)
-app.mount("/uploads", StaticFiles(directory=settings.upload_dir), name="uploads")
+@app.post("/tg/webhook", include_in_schema=False)
+async def telegram_webhook(request: Request):
+    """Приём обновлений Telegram в режиме webhook (когда задан PUBLIC_URL)."""
+    from app.bot import runner
+
+    return await runner.handle_webhook(request)
+
+
+for router in routers:
+    app.include_router(router)
+
 if settings.frontend_dist.exists():
     app.mount("/", StaticFiles(directory=settings.frontend_dist, html=True), name="frontend")
 else:
@@ -69,4 +91,4 @@ if __name__ == "__main__":
     import uvicorn
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-    uvicorn.run("app.main:app", host=settings.host, port=settings.port)
+    uvicorn.run("app.main:app", host=settings.host, port=settings.port, proxy_headers=True, forwarded_allow_ips="*")

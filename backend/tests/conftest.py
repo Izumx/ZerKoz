@@ -15,15 +15,20 @@ def _test_url() -> str:
 
 
 @pytest.fixture(scope="session", autouse=True)
-def _database(tmp_path_factory):
+def _database():
+    # тесты не зависят от локального .env: панель открыта, демо включено, внешние API выключены
+    settings.inspector_password = ""
+    settings.demo_mode = True
+    settings.anthropic_api_key = ""
+    settings.copernicus_client_id = settings.copernicus_client_secret = ""
     url = _test_url()
     db.ensure_database(url)
     db.configure(url)
     from app import models  # noqa: F401
 
-    SQLModel.metadata.drop_all(db.engine)
+    with db.engine.begin() as conn:  # схема могла остаться от прошлой версии моделей
+        conn.execute(text("DROP SCHEMA public CASCADE; CREATE SCHEMA public"))
     SQLModel.metadata.create_all(db.engine)
-    settings.upload_dir = tmp_path_factory.mktemp("uploads")
     yield
     db.engine.dispose()
 

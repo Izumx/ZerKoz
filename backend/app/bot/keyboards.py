@@ -42,6 +42,14 @@ def knowledge_article(lang: str) -> InlineKeyboardMarkup:
     ])
 
 
+def subscription(lang: str, track_no: str, subscribed: bool) -> InlineKeyboardMarkup:
+    if subscribed:
+        button = InlineKeyboardButton(text=t(lang, "btn_unsubscribe"), callback_data=f"unsub:{track_no}")
+    else:
+        button = InlineKeyboardButton(text=t(lang, "btn_subscribe"), callback_data=f"sub:{track_no}")
+    return InlineKeyboardMarkup(inline_keyboard=[[button]])
+
+
 def cancel_only(lang: str) -> ReplyKeyboardMarkup:
     return ReplyKeyboardMarkup(keyboard=[[KeyboardButton(text=t(lang, "btn_cancel"))]], resize_keyboard=True)
 

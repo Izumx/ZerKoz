@@ -1,9 +1,13 @@
+from datetime import timedelta
+
+from sqlalchemy import func
 from sqlmodel import Session, select
 
+from app.config import settings
 from app.events import bus
 from app.models import VIOLATION_TYPES, Parcel, Photo, Signal, utcnow
 from app.services import NotFound, ServiceError, TransitionError, geo, history, notify
-from app.services.photos import photo_dict, save_photo
+from app.services.photos import exif_check, photo_dict, save_photo
 
 STATUS_TRANSITIONS: dict[str, set[str]] = {
     "new": {"checking", "confirmed", "rejected"},
@@ -12,7 +16,51 @@ STATUS_TRANSITIONS: dict[str, set[str]] = {
     "rejected": {"checking"},
     "resolved": set(),
 }
+OPEN_STATUSES = ("new", "checking", "confirmed")
 MAX_DESCRIPTION = 1000
+DUPLICATE_RADIUS_M = 50
+DUPLICATE_WINDOW = timedelta(days=7)
+
+# ключевые слова (RU + KZ) → тип нарушения; используется, если ИИ-анализ не подключён
+KEYWORDS = {
+    "dump": ("мусор", "свалк", "отход", "помойк", "хлам", "бытов", "покрышк", "шин", "қоқыс", "үйінді", "қалдық"),
+    "seizure": ("забор", "захват", "занял", "заняли", "построил", "сарай", "самовол", "пристрой", "огородил",
+                "басып", "қоршау", "иеленіп", "салып"),
+    "unused": ("заброш", "бурьян", "не обрабат", "пустует", "зарос", "сорняк", "никто не", "не использ",
+               "иесіз", "қаңырап", "арамшөп", "пайдаланылмай", "өңделмей"),
+}
+
+
+class RateLimitError(ServiceError):
+    pass
+
+
+def guess_violation(description: str) -> str | None:
+    text = description.lower()
+    scores = {vt: sum(word in text for word in words) for vt, words in KEYWORDS.items()}
+    best = max(scores, key=scores.get)
+    return best if scores[best] else None
+
+
+def check_rate_limit(session: Session, chat_id: int) -> None:
+    def count(hours: int) -> int:
+        since = utcnow() - timedelta(hours=hours)
+        return session.exec(select(func.count()).select_from(Signal)
+                            .where(Signal.tg_chat_id == chat_id, Signal.created_at >= since)).one()
+
+    if count(1) >= settings.signals_per_hour or count(24) >= settings.signals_per_day:
+        raise RateLimitError("Слишком много сигналов, попробуйте позже")
+
+
+def find_duplicate_target(session: Session, lat: float, lon: float) -> Signal | None:
+    """Открытый сигнал в радиусе 50 м за последние 7 дней — о том же месте уже сообщали."""
+    candidates = session.exec(
+        select(Signal).where(Signal.duplicate_of.is_(None), Signal.status.in_(OPEN_STATUSES),
+                             Signal.created_at >= utcnow() - DUPLICATE_WINDOW)
+    ).all()
+    near = [(geo.distance_m(lat, lon, s.lat, s.lon), s) for s in candidates]
+    near = [(d, s) for d, s in near if d <= DUPLICATE_RADIUS_M]
+    return min(near, key=lambda x: x[0])[1] if near else None
 
 
 def create_signal(
@@ -28,15 +76,22 @@ def create_signal(
 ) -> Signal:
     if not (-90 <= lat <= 90 and -180 <= lon <= 180):
         raise ServiceError("Некорректные координаты")
+    if tg_chat_id is not None:
+        check_rate_limit(session, tg_chat_id)
+    description = description.strip()[:MAX_DESCRIPTION]
     parcel = geo.find_parcel(session, lat=lat, lon=lon)
+    primary = find_duplicate_target(session, lat, lon)
     signal = Signal(
         lat=lat,
         lon=lon,
-        description=description.strip()[:MAX_DESCRIPTION],
+        description=description,
         source=source,
         tg_chat_id=tg_chat_id,
         lang=lang,
         parcel_id=parcel.id if parcel else None,
+        duplicate_of=primary.id if primary else None,
+        status=primary.status if primary else "new",
+        suggested_violation=guess_violation(description),
     )
     session.add(signal)
     try:
@@ -45,16 +100,24 @@ def create_signal(
         for data in photos:
             save_photo(session, data, signal_id=signal.id, source="citizen")
         history.log(session, "signal", signal.id, "created",
-                    {"source": source, "parcel": parcel.cadastral_no if parcel else None})
+                    {"source": source, "parcel": parcel.cadastral_no if parcel else None,
+                     "duplicate_of": primary.code if primary else None})
+        if primary:
+            history.log(session, "signal", primary.id, "duplicate", {"code": signal.code})
         session.commit()
     except Exception:
         session.rollback()
         raise
 
     bus.publish("signal.created", {"id": signal.id, "code": signal.code, "lat": lat, "lon": lon,
-                                   "parcel_id": signal.parcel_id})
+                                   "parcel_id": signal.parcel_id,
+                                   "duplicate_of": primary.code if primary else None})
     if signal.parcel_id:
         bus.publish("parcel.updated", {"id": signal.parcel_id})
+    if photos and source != "seed":
+        from app.services import ai_vision
+
+        ai_vision.schedule(signal.id)
     return signal
 
 
@@ -69,17 +132,27 @@ def get_by_code(session: Session, code: str) -> Signal | None:
     return session.exec(select(Signal).where(Signal.code == code)).first()
 
 
+def duplicates_of(session: Session, signal_id: int) -> list[Signal]:
+    return list(session.exec(select(Signal).where(Signal.duplicate_of == signal_id).order_by(Signal.id)).all())
+
+
 def set_status(session: Session, signal_id: int, status: str, violation_type: str | None = None) -> Signal:
     signal = get_signal(session, signal_id)
+    if signal.duplicate_of:
+        primary = session.get(Signal, signal.duplicate_of)
+        raise TransitionError(f"Это повторное сообщение — статус меняется в основном сигнале {primary.code}")
     old = signal.status
     if status not in STATUS_TRANSITIONS.get(old, set()):
         raise TransitionError(f"Переход сигнала «{old}» → «{status}» недопустим")
     if violation_type is not None and violation_type not in VIOLATION_TYPES:
         raise TransitionError(f"Неизвестный тип нарушения: {violation_type}")
 
-    signal.status = status
-    signal.updated_at = utcnow()
-    history.log(session, "signal", signal.id, "status", {"from": old, "to": status})
+    changed = [signal] + duplicates_of(session, signal.id)
+    for s in changed:
+        s.status = status
+        s.updated_at = utcnow()
+        history.log(session, "signal", s.id, "status", {"from": old, "to": status})
+        session.add(s)
 
     if status == "confirmed" and signal.parcel_id:
         parcel = session.get(Parcel, signal.parcel_id)
@@ -89,19 +162,19 @@ def set_status(session: Session, signal_id: int, status: str, violation_type: st
             if parcel.lifecycle != "none":
                 parcel.deadline = None
             parcel.lifecycle = "detected"
-            parcel.violation_type = violation_type or parcel.violation_type or "dump"
+            parcel.violation_type = violation_type or signal.suggested_violation or parcel.violation_type or "dump"
             parcel.under_check = False
             parcel.updated_at = utcnow()
             session.add(parcel)
 
-    session.add(signal)
     session.commit()
-    after_status_change(signal)
+    for s in changed:
+        after_status_change(s)
     return signal
 
 
 def resolve_confirmed_for_parcel(session: Session, parcel_id: int) -> list[Signal]:
-    """Перевести подтверждённые сигналы участка в «устранено» (без commit)."""
+    """Перевести подтверждённые сигналы участка (и их повторы) в «устранено» (без commit)."""
     signals = session.exec(
         select(Signal).where(Signal.parcel_id == parcel_id, Signal.status == "confirmed")
     ).all()
@@ -128,7 +201,13 @@ def _parcel_brief(session: Session, parcel_id: int | None) -> dict | None:
 
 
 def signal_dict(session: Session, signal: Signal, *, full: bool = True) -> dict:
-    photos = session.exec(select(Photo).where(Photo.signal_id == signal.id).order_by(Photo.id)).all()
+    dups = duplicates_of(session, signal.id)
+    group = [signal] + dups
+    photos = session.exec(
+        select(Photo).where(Photo.signal_id.in_([s.id for s in group])).order_by(Photo.id)
+    ).all()
+    by_id = {s.id: s for s in group}
+    primary_code = session.get(Signal, signal.duplicate_of).code if signal.duplicate_of else None
     data = {
         "id": signal.id,
         "code": signal.code,
@@ -139,18 +218,30 @@ def signal_dict(session: Session, signal: Signal, *, full: bool = True) -> dict:
         "lang": signal.lang,
         "status": signal.status,
         "parcel": _parcel_brief(session, signal.parcel_id),
-        "has_citizen": signal.tg_chat_id is not None,
-        "photos": [photo_dict(p) for p in photos],
+        "has_citizen": any(s.tg_chat_id is not None for s in group),
+        "duplicate_of": {"id": signal.duplicate_of, "code": primary_code} if signal.duplicate_of else None,
+        "reports": len(group),
+        "suggested_violation": (signal.ai or {}).get("violation_type") or signal.suggested_violation,
+        "ai": signal.ai,
+        "photos": [
+            photo_dict(p, exif_check(p, by_id[p.signal_id].lat, by_id[p.signal_id].lon, by_id[p.signal_id].created_at))
+            for p in photos
+        ],
         "created_at": signal.created_at.isoformat(),
         "updated_at": signal.updated_at.isoformat(),
     }
     if full:
-        data["history"] = history.for_entities(session, [("signal", signal.id)])
+        data["duplicates"] = [
+            {"id": d.id, "code": d.code, "description": d.description, "created_at": d.created_at.isoformat()}
+            for d in dups
+        ]
+        data["history"] = history.for_entities(session, [("signal", s.id) for s in group])
     return data
 
 
 def list_signals(session: Session, status: str | None = None) -> list[dict]:
-    query = select(Signal).order_by(Signal.created_at.desc())
+    """Основные сигналы (повторы свёрнуты в счётчик reports)."""
+    query = select(Signal).where(Signal.duplicate_of.is_(None)).order_by(Signal.created_at.desc())
     if status:
         query = query.where(Signal.status == status)
     return [signal_dict(session, s, full=False) for s in session.exec(query).all()]

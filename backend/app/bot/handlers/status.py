@@ -1,7 +1,7 @@
 from aiogram import F, Router
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
-from aiogram.types import Message
+from aiogram.types import CallbackQuery, Message
 from sqlmodel import Session
 
 from app.bot import keyboards as kb
@@ -39,6 +39,9 @@ async def answer_status(message: Message, lang: str, kind: str, code: str) -> No
         text = t(lang, "application_card", code=app.track_no, type=APPLICATION_TYPES[lang][app.type],
                  emoji=emoji, stage=stage_name, note=app.note_kz if lang == "kz" else app.note_ru,
                  updated=fmt_dt(app.updated_at))
+        subscribed = await db_call(applications.is_subscribed, app.track_no, message.chat.id)
+        await message.answer(text, reply_markup=kb.subscription(lang, app.track_no, subscribed))
+        return
     else:
         view = await db_call(_signal_view, code)
         if view is None:
@@ -49,6 +52,18 @@ async def answer_status(message: Message, lang: str, kind: str, code: str) -> No
         text = t(lang, "signal_card", code=signal.code, place=signal_place(lang, signal.lat, signal.lon, cadastral_no),
                  emoji=emoji, status=status_name, hint=hint, updated=fmt_dt(signal.updated_at))
     await message.answer(text, reply_markup=kb.main_menu(lang))
+
+
+@router.callback_query(F.data.startswith("sub:") | F.data.startswith("unsub:"))
+async def toggle_subscription(callback: CallbackQuery) -> None:
+    lang = await get_lang(callback.message.chat.id) or "ru"
+    action, code = callback.data.split(":", 1)
+    if action == "sub":
+        await db_call(applications.subscribe, code, callback.message.chat.id, lang)
+    else:
+        await db_call(applications.unsubscribe, code, callback.message.chat.id)
+    await callback.message.edit_reply_markup(reply_markup=kb.subscription(lang, code, action == "sub"))
+    await callback.answer(t(lang, "subscribed" if action == "sub" else "unsubscribed", code=code), show_alert=False)
 
 
 @router.message(Command("status"))

@@ -13,7 +13,9 @@ def test_generate_produces_demo_dataset(session):
     assert d["red"] == 7 and d["overdue"] == 3
     assert d["yellow"] >= 5
     assert session.exec(select(Application).where(Application.track_no == "KZ-2026-042")).one()
-    assert len(session.exec(select(Signal)).all()) == 6
+    all_signals = session.exec(select(Signal).order_by(Signal.id)).all()
+    assert len(all_signals) == 7
+    assert all_signals[-1].duplicate_of == all_signals[0].id  # повторное сообщение о той же свалке
     # участки не пересекаются — иначе привязка сигнала неоднозначна
     from shapely.geometry import shape
     shapes = [shape(p.geometry) for p in session.exec(select(Parcel)).all()]

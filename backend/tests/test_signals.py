@@ -1,4 +1,4 @@
-import io
+﻿import io
 from datetime import date, timedelta
 
 import pytest
@@ -30,7 +30,7 @@ def test_create_signal_binds_to_parcel_and_saves_photo(session):
     assert s.parcel_id == p.id
     data = signals.signal_dict(session, s)
     assert data["description"] == "Свалка"
-    assert data["photos"][0]["url"].startswith("/uploads/")
+    assert data["photos"][0]["url"].startswith("/media/")
     assert data["parcel"]["cadastral_no"] == p.cadastral_no
     assert parcels.feature_collection(session)["features"][0]["properties"]["color"] == "yellow"
 

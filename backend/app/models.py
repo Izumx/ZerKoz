@@ -1,6 +1,6 @@
 from datetime import date, datetime, timezone
 
-from sqlalchemy import BigInteger, DateTime
+from sqlalchemy import BigInteger, DateTime, LargeBinary, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 
@@ -33,6 +33,8 @@ class Parcel(SQLModel, table=True):
     deadline: date | None = None
     under_check: bool = False
     ndvi_series: list = Field(default_factory=list, sa_type=JSONB, nullable=False)
+    ndvi_source: str = "simulation"  # simulation | sentinel-2
+    ndvi_months: list = Field(default_factory=list, sa_type=JSONB, nullable=False)  # «2026-09» для каждой точки
     updated_at: datetime = _ts()
 
 
@@ -43,21 +45,34 @@ class Signal(SQLModel, table=True):
     lon: float
     description: str = ""
     source: str = "telegram"
-    tg_chat_id: int | None = Field(default=None, sa_type=BigInteger)
+    tg_chat_id: int | None = Field(default=None, sa_type=BigInteger, index=True)
     lang: str = "ru"
     status: str = "new"
     parcel_id: int | None = Field(default=None, foreign_key="parcel.id", index=True)
+    # повторное сообщение о том же месте: статус ведёт основной сигнал
+    duplicate_of: int | None = Field(default=None, foreign_key="signal.id", index=True)
+    suggested_violation: str | None = None
+    ai: dict | None = Field(default=None, sa_type=JSONB)
     created_at: datetime = _ts()
     updated_at: datetime = _ts()
 
 
 class Photo(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
-    path: str
+    path: str = Field(unique=True, index=True)  # публичное имя: <uuid>.<ext>
+    content_type: str = "image/jpeg"
     parcel_id: int | None = Field(default=None, foreign_key="parcel.id", index=True)
     signal_id: int | None = Field(default=None, foreign_key="signal.id", index=True)
     source: str = "inspector"
+    exif: dict | None = Field(default=None, sa_type=JSONB)  # {lat, lon, taken_at} из EXIF
     created_at: datetime = _ts()
+
+
+class PhotoBlob(SQLModel, table=True):
+    """Содержимое фото хранится в БД — не зависит от временного диска хостинга."""
+
+    photo_id: int = Field(primary_key=True, foreign_key="photo.id")
+    data: bytes = Field(sa_type=LargeBinary, nullable=False)
 
 
 class Application(SQLModel, table=True):
@@ -69,6 +84,16 @@ class Application(SQLModel, table=True):
     note_ru: str = ""
     note_kz: str = ""
     updated_at: datetime = _ts()
+
+
+class ApplicationSubscription(SQLModel, table=True):
+    __table_args__ = (UniqueConstraint("track_no", "chat_id"),)
+
+    id: int | None = Field(default=None, primary_key=True)
+    track_no: str = Field(index=True)
+    chat_id: int = Field(sa_type=BigInteger)
+    lang: str = "ru"
+    created_at: datetime = _ts()
 
 
 class Event(SQLModel, table=True):

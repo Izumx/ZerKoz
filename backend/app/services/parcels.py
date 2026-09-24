@@ -7,6 +7,7 @@ from app.events import bus
 from app.models import VIOLATION_TYPES, Parcel, Photo, Signal, utcnow
 from app.services import NotFound, TransitionError, history
 from app.services.photos import photo_dict
+from app.timeutil import today_kz
 
 __all__ = ["TransitionError", "compute_color", "is_overdue", "update_parcel", "feature_collection", "parcel_detail"]
 
@@ -32,7 +33,7 @@ def compute_color(parcel: Parcel, open_signals: int) -> str:
 
 
 def is_overdue(parcel: Parcel, today: date | None = None) -> bool:
-    today = today or date.today()
+    today = today or today_kz()
     return parcel.lifecycle in ACTIVE and parcel.deadline is not None and parcel.deadline < today
 
 
@@ -107,7 +108,7 @@ def update_parcel(session: Session, parcel_id: int, changes: dict) -> Parcel:
 def open_signal_counts(session: Session) -> dict[int, int]:
     rows = session.exec(
         select(Signal.parcel_id, func.count())
-        .where(Signal.parcel_id.is_not(None), Signal.status.in_(OPEN_SIGNAL_STATUSES))
+        .where(Signal.parcel_id.is_not(None), Signal.duplicate_of.is_(None), Signal.status.in_(OPEN_SIGNAL_STATUSES))
         .group_by(Signal.parcel_id)
     ).all()
     return dict(rows)
@@ -154,7 +155,7 @@ def parcel_detail(session: Session, parcel_id: int) -> dict:
     signals = session.exec(
         select(Signal).where(Signal.parcel_id == parcel_id).order_by(Signal.created_at.desc())
     ).all()
-    open_count = sum(1 for s in signals if s.status in OPEN_SIGNAL_STATUSES)
+    open_count = sum(1 for s in signals if s.status in OPEN_SIGNAL_STATUSES and s.duplicate_of is None)
     signal_ids = [s.id for s in signals]
     condition = Photo.parcel_id == parcel_id
     if signal_ids:
@@ -164,9 +165,11 @@ def parcel_detail(session: Session, parcel_id: int) -> dict:
         **parcel_properties(parcel, open_count),
         "geometry": parcel.geometry,
         "ndvi_series": parcel.ndvi_series,
+        "ndvi_source": parcel.ndvi_source,
+        "ndvi_months": parcel.ndvi_months,
         "photos": [photo_dict(p) for p in photos],
         "signals": [
-            {"id": s.id, "code": s.code, "status": s.status, "description": s.description,
+            {"id": s.id, "code": s.code, "status": s.status, "description": s.description, "duplicate": s.duplicate_of is not None,
              "created_at": s.created_at.isoformat()}
             for s in signals
         ],

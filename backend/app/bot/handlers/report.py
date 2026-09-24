@@ -31,6 +31,11 @@ async def _lang(message: Message) -> str:
 async def start_report(message: Message, state: FSMContext) -> None:
     lang = await _lang(message)
     await state.clear()
+    try:
+        await db_call(signals.check_rate_limit, message.chat.id)
+    except signals.RateLimitError:
+        await message.answer(t(lang, "rate_limited"), reply_markup=kb.main_menu(lang))
+        return
     await state.set_state(Report.location)
     await message.answer(t(lang, "report_intro"), reply_markup=kb.send_location(lang))
 
@@ -136,11 +141,25 @@ async def submit(callback: CallbackQuery, state: FSMContext, bot: Bot) -> None:
     await message.edit_reply_markup(reply_markup=None)
     await callback.answer(t(lang, "report_sending"))
     photos = [(await bot.download(file_id)).read() for file_id in data["photos"]]
-    signal = await db_call(
-        signals.create_signal, lat=data["lat"], lon=data["lon"], description=data["description"],
-        source="telegram", tg_chat_id=message.chat.id, lang=lang, photos=photos,
-    )
-    await message.answer(t(lang, "report_sent", code=signal.code), reply_markup=kb.main_menu(lang))
+    try:
+        signal = await db_call(
+            signals.create_signal, lat=data["lat"], lon=data["lon"], description=data["description"],
+            source="telegram", tg_chat_id=message.chat.id, lang=lang, photos=photos,
+        )
+    except signals.RateLimitError:
+        await message.answer(t(lang, "rate_limited"), reply_markup=kb.main_menu(lang))
+        return
+    if signal.duplicate_of:
+        primary, reports = await db_call(_group_info, signal.duplicate_of)
+        text = t(lang, "report_sent_duplicate", code=signal.code, primary=primary, n=reports)
+    else:
+        text = t(lang, "report_sent", code=signal.code)
+    await message.answer(text, reply_markup=kb.main_menu(lang))
+
+
+def _group_info(session, primary_id: int) -> tuple[str, int]:
+    primary = signals.get_signal(session, primary_id)
+    return primary.code, 1 + len(signals.duplicates_of(session, primary_id))
 
 
 @router.callback_query(F.data.in_({"report:submit", "report:cancel"}))

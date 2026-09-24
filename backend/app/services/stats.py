@@ -27,8 +27,9 @@ def dashboard(session: Session) -> dict:
     def count(*conditions) -> int:
         return session.exec(select(func.count()).select_from(Signal).where(*conditions)).one()
 
-    result["signals_new"] = count(Signal.status == "new")
-    result["signals_open"] = count(Signal.status.in_(OPEN_SIGNAL_STATUSES))
+    primary = Signal.duplicate_of.is_(None)  # повторные сообщения о том же месте не считаем
+    result["signals_new"] = count(primary, Signal.status == "new")
+    result["signals_open"] = count(primary, Signal.status.in_(OPEN_SIGNAL_STATUSES))
     result["signals_24h"] = count(Signal.created_at >= utcnow() - timedelta(hours=24))
     return result
 

@@ -2,16 +2,10 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import Response
 from sqlmodel import Session
 
-from app import runtime
 from app.db import get_session
 from app.services import stats
 
 router = APIRouter(tags=["stats"])
-
-
-@router.get("/health")
-def health() -> dict:
-    return {"ok": True, "bot_username": runtime.bot_username}
 
 
 @router.get("/stats")

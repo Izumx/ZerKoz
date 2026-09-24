@@ -5,7 +5,6 @@ python -m app.seed.generate [--reset]
 import argparse
 import math
 import random
-import shutil
 from datetime import date, timedelta
 
 from sqlmodel import SQLModel, Session, select
@@ -17,6 +16,7 @@ from app.seed.data import APPLICATIONS, CLUSTERS, OWNERS
 from app.seed.placeholder import make_photo
 from app.services import geo, history, signals
 from app.services.photos import save_photo
+from app.timeutil import today_kz
 
 M_PER_DEG = geo.M_PER_DEG
 CAPTION = {"dump": "Свалка", "unused": "Неиспользование", "seizure": "Самозахват"}
@@ -41,8 +41,8 @@ def lot_polygon(lat: float, lon: float, area_ha: float, angle_deg: float, rng: r
     return {"type": "Polygon", "coordinates": [ring]}
 
 
-def ndvi_series(purpose: str, used: bool, rng: random.Random) -> list[float]:
-    """12 месяцев (окт → сен). Используемая сельхозземля — выраженный сезонный пик, заброшенная — плоско и низко."""
+def ndvi_series(purpose: str, used: bool, rng: random.Random, months: list[str]) -> list[float]:
+    """Используемая сельхозземля — выраженный сезонный пик в июле, заброшенная — плоско и низко."""
     base, amp = {
         "agri": (0.22, 0.55), "lph": (0.25, 0.35), "izhs": (0.25, 0.2),
         "commercial": (0.12, 0.06), "industrial": (0.08, 0.05),
@@ -50,18 +50,26 @@ def ndvi_series(purpose: str, used: bool, rng: random.Random) -> list[float]:
     if not used:
         base, amp = 0.1, 0.08
     series = []
-    for m in range(12):  # m=0 — октябрь, пик в июле (m=9)
-        season = max(0.0, math.cos((m - 9) / 12 * 2 * math.pi))
+    for month in months:
+        season = max(0.0, math.cos((int(month[5:]) - 7) / 12 * 2 * math.pi))
         series.append(round(min(0.9, max(0.02, base + amp * season + rng.uniform(-0.03, 0.03))), 2))
     return series
+
+
+def ndvi_months() -> list[str]:
+    """12 месяцев, заканчивая текущим: ['2025-10', …, '2026-09']."""
+    today = today_kz()
+    months = []
+    for back in range(11, -1, -1):
+        y, m = divmod(today.year * 12 + today.month - 1 - back, 12)
+        months.append(f"{y}-{m + 1:02d}")
+    return months
 
 
 def reset(session: Session) -> None:
     session.close()
     SQLModel.metadata.drop_all(db.engine)
     SQLModel.metadata.create_all(db.engine)
-    shutil.rmtree(settings.upload_dir, ignore_errors=True)
-    settings.upload_dir.mkdir(parents=True, exist_ok=True)
 
 
 def backdate_events(session: Session, entity: str, entity_id: int, start_days_ago: int) -> None:
@@ -103,7 +111,7 @@ def create_parcels(session: Session, rng: random.Random) -> list[Parcel]:
 
 def apply_scenarios(session: Session, parcels: list[Parcel], rng: random.Random) -> dict[str, list[Parcel]]:
     """Распределить статусы: 7 красных (3 просрочены), 3 на проверке, 2 закрытых нарушения, остальные зелёные."""
-    today = date.today()
+    today = today_kz()
     pool = parcels[:]
     rng.shuffle(pool)
     # (lifecycle, сдвиг дедлайна в днях | None, under_check)
@@ -139,8 +147,9 @@ def apply_scenarios(session: Session, parcels: list[Parcel], rng: random.Random)
             groups["closed"].append(parcel)
     groups["green"] = pool[len(scenarios):]
     for parcel in parcels:
+        parcel.ndvi_months = ndvi_months()
         parcel.ndvi_series = ndvi_series(parcel.purpose, parcel.violation_type != "unused" or
-                                         parcel.lifecycle in ("resolved", "returned"), rng)
+                                         parcel.lifecycle in ("resolved", "returned"), rng, parcel.ndvi_months)
         session.add(parcel)
     session.commit()
     return groups
@@ -161,10 +170,12 @@ def create_signals(session: Session, groups: dict[str, list[Parcel]], rng: rando
         (green[2], "dump", "Кучка листвы у забора", "rejected", 6),
         (None, "dump", "Стихийная свалка у обочины трассы Тараз — Шымкент", "new", 0.6),
     ]
+    first = None
     for parcel, kind, text, status, days_ago in specs:
         lat, lon = point(parcel) if parcel else (42.8870, 71.3000)
         photo = make_photo(kind, f"Народный контроль · {CAPTION[kind]}", rng)
         s = signals.create_signal(session, lat=lat, lon=lon, description=text, source="seed", photos=[photo])
+        first = first or s
         if status != "new":
             s.status = status
             history.log(session, "signal", s.id, "status", {"from": "new", "to": status})
@@ -172,6 +183,13 @@ def create_signals(session: Session, groups: dict[str, list[Parcel]], rng: rando
         session.add(s)
         session.flush()
         backdate_events(session, "signal", s.id, start_days_ago=int(days_ago))
+    session.commit()
+    # второй житель сообщает о той же свалке в ~12 м — сигнал автоматически станет повтором первого
+    dup = signals.create_signal(session, lat=first.lat + 0.0001, lon=first.lon + 0.00005,
+                                description="Мусор так и лежит, уже пахнет", source="seed",
+                                photos=[make_photo("dump", "Народный контроль · Свалка", rng)])
+    dup.created_at = dup.updated_at = utcnow() - timedelta(hours=2)
+    session.add(dup)
     session.commit()
 
 
