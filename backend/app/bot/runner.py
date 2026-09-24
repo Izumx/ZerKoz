@@ -14,7 +14,7 @@ from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramUnauthorizedError
 from aiogram.fsm.storage.base import BaseStorage
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types import BotCommand, ErrorEvent
+from aiogram.types import BotCommand, ErrorEvent, MenuButtonWebApp, WebAppInfo
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
@@ -134,6 +134,8 @@ async def run_bot(token: str) -> None:
             url = f"{settings.webhook_base}/tg/webhook"
             await bot.set_webhook(url, secret_token=webhook_secret(token),
                                   allowed_updates=dp.resolve_used_update_types())
+            if app_url := kb.webapp_url("ru"):
+                await bot.set_chat_menu_button(menu_button=MenuButtonWebApp(text="🗺 Карта", web_app=WebAppInfo(url=app_url)))
             log.info("Telegram-бот @%s запущен (webhook: %s)", me.username, url)
             await asyncio.Event().wait()
         else:

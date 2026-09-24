@@ -3,19 +3,29 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     KeyboardButton,
     ReplyKeyboardMarkup,
+    WebAppInfo,
 )
 
 from app.bot.i18n import t
+from app.config import settings
 from app.bot.knowledge import ARTICLES, EGOV
 
 
+def webapp_url(lang: str) -> str | None:
+    """Mini App открывается только по https — есть лишь при публичном адресе сервиса."""
+    return f"{settings.webhook_base}/?tg=1&lang={lang}" if settings.webhook_base.startswith("https://") else None
+
+
 def main_menu(lang: str) -> ReplyKeyboardMarkup:
+    rows = [
+        [KeyboardButton(text=t(lang, "btn_status"))],
+        [KeyboardButton(text=t(lang, "btn_report"))],
+        [KeyboardButton(text=t(lang, "btn_kb")), KeyboardButton(text=t(lang, "btn_lang"))],
+    ]
+    if url := webapp_url(lang):
+        rows.insert(2, [KeyboardButton(text=t(lang, "btn_map"), web_app=WebAppInfo(url=url))])
     return ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text=t(lang, "btn_status"))],
-            [KeyboardButton(text=t(lang, "btn_report"))],
-            [KeyboardButton(text=t(lang, "btn_kb")), KeyboardButton(text=t(lang, "btn_lang"))],
-        ],
+        keyboard=rows,
         resize_keyboard=True,
         input_field_placeholder="KZ-2026-042",
     )

@@ -14,6 +14,7 @@ import MapView, { type Focus } from './components/MapView'
 import ParcelCard from './components/ParcelCard'
 import Sidebar, { type ColorFilter, type Tab } from './components/Sidebar'
 import SignalCard from './components/SignalCard'
+import TgApp from './tgapp/TgApp'
 import { useI18n } from './i18n'
 import { useLive, type LiveEvent } from './useLive'
 
@@ -29,8 +30,21 @@ interface Toast {
 
 const FRESH_MS = 60_000
 
-/** Корень: проверка сессии → экран входа, печатный акт или рабочее место инспектора. */
+/** Корень: Mini App жителей (?tg=1) или панель: проверка сессии → вход, печатный акт, рабочее место. */
 export default function App() {
+  return new URLSearchParams(window.location.search).has('tg') ? <TgRoot /> : <InspectorApp />
+}
+
+function TgRoot() {
+  const i = useI18n()
+  useEffect(() => {
+    const lang = new URLSearchParams(window.location.search).get('lang')
+    if (lang === 'kz' || lang === 'ru') i.setLang(lang)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  return <TgApp />
+}
+
+function InspectorApp() {
   const params = new URLSearchParams(window.location.search)
   const actId = Number(params.get('act')) || null
   const [session, setSession] = useState<SessionInfo | null>(null)

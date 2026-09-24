@@ -1624,3 +1624,130 @@ button.route__stop:hover {
     margin: 16mm;
   }
 }
+
+/* ---------- Telegram Mini App жителей ---------- */
+.tga {
+  --tga-bg: var(--tg-theme-bg-color, var(--paper));
+  --tga-card: var(--tg-theme-secondary-bg-color, var(--sheet));
+  --tga-text: var(--tg-theme-text-color, var(--ink));
+  --tga-hint: var(--tg-theme-hint-color, var(--ink-2));
+  --tga-accent: var(--tg-theme-button-color, var(--accent));
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--tga-bg);
+  color: var(--tga-text);
+}
+.tga__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+}
+.tga__title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 17px;
+}
+.tga__sub {
+  font-size: 12.5px;
+  color: var(--tga-hint);
+}
+.tga__counts {
+  display: flex;
+  gap: 6px;
+}
+.tga__count {
+  min-width: 30px;
+  padding: 3px 8px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 700;
+  text-align: center;
+  color: #fff;
+}
+.tga__count--open {
+  background: var(--signal);
+}
+.tga__count--confirmed {
+  background: var(--bad);
+}
+.tga__count--resolved {
+  background: var(--ok);
+}
+.tga__map {
+  position: relative;
+  height: 48vh;
+  min-height: 260px;
+}
+.tga__locate {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  z-index: 500;
+  border: 0;
+  border-radius: 20px;
+  padding: 8px 14px;
+  font-weight: 600;
+  background: var(--tga-accent);
+  color: var(--tg-theme-button-text-color, #fff);
+  box-shadow: var(--shadow);
+}
+.tga__tabs {
+  display: flex;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--line);
+}
+.tga__tabs button {
+  flex: 1;
+  border: 0;
+  background: none;
+  padding: 12px 4px 10px;
+  font-weight: 600;
+  color: var(--tga-hint);
+  border-bottom: 2px solid transparent;
+}
+.tga__tabs button.is-active {
+  color: var(--tga-text);
+  border-bottom-color: var(--tga-accent);
+}
+.tga__list {
+  list-style: none;
+  margin: 0;
+  padding: 6px 8px;
+  display: grid;
+  gap: 4px;
+}
+.tga__row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  width: 100%;
+  border: 0;
+  text-align: left;
+  padding: 10px;
+  border-radius: 10px;
+  background: var(--tga-card);
+  color: var(--tga-text);
+}
+.tga__row-main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.tga__row-title {
+  font-weight: 600;
+}
+.tga__row-sub {
+  font-size: 12.5px;
+  color: var(--tga-hint);
+}
+.tga__privacy {
+  margin: 4px 16px 16px;
+  font-size: 12px;
+  color: var(--tga-hint);
+}
+.tga .empty {
+  color: var(--tga-hint);
+}
