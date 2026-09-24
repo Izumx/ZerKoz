@@ -205,3 +205,22 @@ def test_ndvi_disabled_without_keys(session):
 
     with pytest.raises(ndvi.NdviError):
         ndvi.fetch_series({"type": "Polygon", "coordinates": []})
+
+
+# ---------- деплой ----------
+
+def test_database_url_normalized():
+    from app.config import Settings
+
+    assert Settings(database_url="postgres://u:p@h:5432/db").database_url == "postgresql+psycopg://u:p@h:5432/db"
+    assert Settings(database_url="postgresql://u@h/db").database_url == "postgresql+psycopg://u@h/db"
+
+
+def test_webhook_rejects_wrong_secret(monkeypatch):
+    from app.bot import runner
+
+    monkeypatch.setattr(settings, "bot_token", "42:TEST")
+    client = TestClient(app)
+    assert client.post("/tg/webhook", json={}).status_code == 403
+    ok_header = {"X-Telegram-Bot-Api-Secret-Token": runner.webhook_secret("42:TEST")}
+    assert client.post("/tg/webhook", json={}, headers=ok_header).status_code == 503  # бот ещё не запущен

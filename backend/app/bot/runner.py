@@ -129,8 +129,8 @@ async def run_bot(token: str) -> None:
         runtime.bot_username = me.username
         _active = (bot, dp)
 
-        if settings.public_url:
-            url = f"{settings.public_url.rstrip('/')}/tg/webhook"
+        if settings.webhook_base:
+            url = f"{settings.webhook_base}/tg/webhook"
             await bot.set_webhook(url, secret_token=webhook_secret(token),
                                   allowed_updates=dp.resolve_used_update_types())
             log.info("Telegram-бот @%s запущен (webhook: %s)", me.username, url)
