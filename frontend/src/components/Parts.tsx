@@ -166,7 +166,7 @@ export function Ndvi({
         </text>
       </svg>
       <p className={`small ${low ? 'text-bad' : 'muted'}`}>{low ? i.t('ndviLow') : i.t('ndviOk')}</p>
-      <p className={`small ndvi-source ndvi-source--${source}`}>{source === 'sentinel-2' ? `🛰 ${i.t('ndviReal')}` : i.t('ndviNote')}</p>
+      <p className={`small ndvi-source ndvi-source--${source}`}>{source === 'sentinel-2' ? `🛰 ${i.t('ndviReal')}` : i.t(onRefresh ? 'ndviSimHint' : 'ndviNote')}</p>
     </Section>
   )
 }
