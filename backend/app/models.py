@@ -64,7 +64,6 @@ class Photo(SQLModel, table=True):
     parcel_id: int | None = Field(default=None, foreign_key="parcel.id", index=True)
     signal_id: int | None = Field(default=None, foreign_key="signal.id", index=True)
     source: str = "inspector"
-    exif: dict | None = Field(default=None, sa_type=JSONB)  # {lat, lon, taken_at} из EXIF
     created_at: datetime = _ts()
 
 

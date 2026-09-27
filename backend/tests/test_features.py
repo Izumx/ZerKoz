@@ -14,16 +14,9 @@ from app.services.photos import save_photo
 from tests.factories import make_parcel
 
 
-def jpeg(gps: tuple[float, float] | None = None, taken: str = "2026:09:24 10:00:00") -> bytes:
-    img = Image.new("RGB", (8, 8), "gray")
-    exif = Image.Exif()
-    if gps:
-        lat, lon = gps
-        dms = lambda v: (float(int(v)), float(int(v * 60 % 60)), round(v * 3600 % 60, 2))  # noqa: E731
-        exif[0x8825] = {1: "N", 2: dms(lat), 3: "E", 4: dms(lon)}
-    exif[0x0132] = taken
+def jpeg() -> bytes:
     buf = io.BytesIO()
-    img.save(buf, "JPEG", exif=exif)
+    Image.new("RGB", (8, 8), "gray").save(buf, "JPEG")
     return buf.getvalue()
 
 
@@ -82,17 +75,6 @@ def test_confirm_uses_suggested_violation(session):
     session.refresh(p)
     assert p.violation_type == "unused"
 
-
-# ---------- EXIF ----------
-
-def test_exif_check_statuses(session):
-    near = signals.create_signal(session, lat=42.905, lon=71.36, photos=[jpeg((42.9051, 71.3601))])
-    far = signals.create_signal(session, lat=42.5, lon=71.0, photos=[jpeg((42.905, 71.36))])
-    bare = signals.create_signal(session, lat=41.0, lon=70.0, photos=[jpeg(None)])
-    checks = [signals.signal_dict(session, s)["photos"][0]["exif_check"] for s in (near, far, bare)]
-    assert checks[0]["status"] == "ok" and checks[0]["distance_m"] < 50
-    assert checks[1]["status"] == "far" and checks[1]["distance_m"] > 40_000
-    assert checks[2]["status"] in ("no_gps", "old")
 
 
 # ---------- заявления ----------

@@ -8,7 +8,7 @@ from app.config import settings
 from app.events import bus
 from app.models import VIOLATION_TYPES, Parcel, Photo, Signal, utcnow
 from app.services import NotFound, ServiceError, TransitionError, geo, history, notify
-from app.services.photos import exif_check, photo_dict, save_photo
+from app.services.photos import photo_dict, save_photo
 
 STATUS_TRANSITIONS: dict[str, set[str]] = {
     "new": {"checking", "confirmed", "rejected"},
@@ -235,11 +235,7 @@ def _signal_dicts(session: Session, signals: list[Signal], *, full: bool) -> lis
             # ai_vision.analyze сам переносит уверенный вердикт ИИ сюда; «none» и низкая уверенность не подставляются
             "suggested_violation": signal.suggested_violation,
             "ai": signal.ai,
-            "photos": [
-                photo_dict(p, exif_check(p, by_id[p.signal_id].lat, by_id[p.signal_id].lon,
-                                         by_id[p.signal_id].created_at))
-                for p in photos_by[signal.id]
-            ],
+            "photos": [photo_dict(p) for p in photos_by[signal.id]],
             "created_at": signal.created_at.isoformat(),
             "updated_at": signal.updated_at.isoformat(),
         }

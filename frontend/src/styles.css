@@ -1220,7 +1220,7 @@ button {
   }
 }
 
-/* ---------- v1.1: вход, заявления, маршрут, ИИ, EXIF, акт ---------- */
+/* ---------- v1.1: вход, заявления, маршрут, ИИ, акт ---------- */
 .tabs button {
   font-size: 12.5px;
   padding-inline: 2px;
@@ -1318,23 +1318,6 @@ button {
   margin: 0;
   display: grid;
   gap: 3px;
-}
-.exif {
-  font-size: 10.5px;
-  line-height: 1.25;
-  font-weight: 600;
-}
-.exif--ok {
-  color: #23864a;
-}
-.exif--far,
-.exif--old {
-  color: var(--bad);
-}
-.exif--no_gps,
-.exif--none {
-  color: var(--ink-3);
-  font-weight: 500;
 }
 .ndvi__dot {
   fill: var(--ok);

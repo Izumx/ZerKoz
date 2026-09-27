@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import type { ExifCheck, HistoryItem, Photo } from '../api'
+import type { HistoryItem, Photo } from '../api'
 import { formatDateTime, historyText } from '../format'
 import { useI18n } from '../i18n'
 
@@ -13,21 +13,6 @@ export function Section({ title, aside, children }: { title: string; aside?: Rea
       {children}
     </section>
   )
-}
-
-function ExifBadge({ check }: { check: ExifCheck }) {
-  const i = useI18n()
-  const text =
-    check.status === 'ok'
-      ? i.t('exifOk', { m: check.distance_m ?? 0 })
-      : check.status === 'far'
-        ? i.t('exifFar', { km: ((check.distance_m ?? 0) / 1000).toFixed(1) })
-        : check.status === 'old'
-          ? i.t('exifOld', { d: Math.round(check.age_days ?? 0) })
-          : check.status === 'no_gps'
-            ? i.t('exifNoGps')
-            : i.t('exifNone')
-  return <span className={`exif exif--${check.status}`}>{text}</span>
 }
 
 export function Photos({ photos, onUpload }: { photos: Photo[]; onUpload?: (files: File[]) => Promise<void> }) {
@@ -75,7 +60,6 @@ export function Photos({ photos, onUpload }: { photos: Photo[]; onUpload?: (file
                   {p.source === 'citizen' ? i.t('byCitizen') : i.t('byInspector')}
                 </span>
               </button>
-              {p.exif_check && <ExifBadge check={p.exif_check} />}
             </figure>
           ))}
         </div>

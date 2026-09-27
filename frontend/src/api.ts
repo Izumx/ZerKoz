@@ -34,20 +34,12 @@ export interface ParcelCollection {
   features: ParcelFeature[]
 }
 
-export interface ExifCheck {
-  status: 'ok' | 'far' | 'old' | 'no_gps' | 'none'
-  distance_m?: number
-  age_days?: number
-  taken_at?: string | null
-}
-
 export interface Photo {
   id: number
   url: string
   source: 'inspector' | 'citizen'
   signal_id: number | null
   created_at: string
-  exif_check?: ExifCheck
 }
 
 export interface HistoryItem {
