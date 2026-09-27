@@ -254,3 +254,74 @@ def test_bot_escapes_application_note(session):
 
     asyncio.run(answer_status(FakeMessage(), "ru", "application", "KZ-2026-042"))
     assert "Срок &lt; 10 дней, ТОО «А&amp;Б»" in sent[0]
+
+
+# ---------- регрессии из второго ревью ----------
+
+def test_closing_parcel_resolves_duplicates_outside_it(session):
+    from app.services import parcels
+
+    p = make_parcel(session)  # квадрат 71.00–71.01 × 42.00–42.01
+    primary = signals.create_signal(session, lat=42.0001, lon=71.0001, description="Свалка")
+    outside = signals.create_signal(session, lat=41.9999, lon=70.9999, description="Та же свалка")
+    assert outside.parcel_id is None and outside.duplicate_of == primary.id
+    signals.set_status(session, primary.id, "confirmed")
+    parcels.update_parcel(session, p.id, {"lifecycle": "resolved"})
+    session.refresh(primary)
+    session.refresh(outside)
+    assert (primary.status, outside.status) == ("resolved", "resolved")
+
+
+def test_ndvi_network_error_is_readable(session, monkeypatch):
+    import httpx
+
+    from app.services import ndvi
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectTimeout("timeout", request=request)
+
+    real_client = httpx.Client
+    monkeypatch.setattr(httpx, "Client", lambda **kw: real_client(transport=httpx.MockTransport(handler), **kw))
+    monkeypatch.setattr(settings, "copernicus_client_id", "id")
+    monkeypatch.setattr(settings, "copernicus_client_secret", "secret")
+    monkeypatch.setattr(ndvi, "_token", None)
+    with pytest.raises(ndvi.NdviError, match="Copernicus недоступен"):
+        ndvi.fetch_series(make_parcel(session).geometry)
+
+
+def test_bot_hides_exact_point_of_foreign_signal(session):
+    import asyncio
+
+    from aiogram.types import Chat
+
+    from app.bot.handlers.status import answer_status
+
+    s = signals.create_signal(session, lat=42.123456, lon=71.654321, description="Свалка", tg_chat_id=7)
+    sent = []
+
+    def fake(chat_id):
+        class FakeMessage:
+            chat = Chat(id=chat_id, type="private")
+
+            async def answer(self, text, **kwargs):
+                sent.append(text)
+
+        return FakeMessage()
+
+    asyncio.run(answer_status(fake(99), "ru", "signal", s.code))
+    asyncio.run(answer_status(fake(7), "ru", "signal", s.code))
+    assert "42.123456"[:7] not in sent[0] and "42.12300" in sent[0]  # чужой — только район
+    assert "42.12346" in sent[1]  # автор видит точную точку
+
+
+def test_history_for_several_entities_in_one_query(session):
+    from app.services import history
+
+    history.log(session, "parcel", 1, "a")
+    history.log(session, "signal", 5, "b")
+    history.log(session, "signal", 6, "c")
+    history.log(session, "signal", 1, "not mine")
+    session.commit()
+    actions = {e["action"] for e in history.for_entities(session, [("parcel", 1), ("signal", 5), ("signal", 6)])}
+    assert actions == {"a", "b", "c"}
+    assert history.for_entities(session, []) == []

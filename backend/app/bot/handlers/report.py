@@ -1,7 +1,7 @@
 """«Народный контроль»: геолокация → фото (1–3) → описание → подтверждение."""
 import asyncio
 import html
-from collections import defaultdict
+import weakref
 
 from aiogram import Bot, F, Router
 from aiogram.filters import Command
@@ -13,13 +13,24 @@ from app.bot.i18n import all_langs, t
 from app.bot.states import Report
 from app.bot.util import db_call, get_lang, parse_coords
 from app.services import geo, signals
+from app.services.photos import MAX_BYTES
 
 router = Router(name="report")
 MAX_PHOTOS = 3
 MAX_DESCRIPTION = 500
-_photo_locks: dict[int, asyncio.Lock] = defaultdict(asyncio.Lock)  # альбом приходит несколькими апдейтами сразу
+# альбом приходит несколькими апдейтами сразу; блокировка живёт, пока её кто-то держит или ждёт
+_photo_locks: weakref.WeakValueDictionary[int, asyncio.Lock] = weakref.WeakValueDictionary()
+# файлом принимаем только то, что сервер сохранит (HEIC с iPhone Pillow не открывает)
+IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
 
-is_image = F.photo | F.document.mime_type.startswith("image/")
+is_image = F.photo | F.document.mime_type.in_(IMAGE_TYPES)
+
+
+def _photo_lock(chat_id: int) -> asyncio.Lock:
+    lock = _photo_locks.get(chat_id)
+    if lock is None:
+        lock = _photo_locks[chat_id] = asyncio.Lock()
+    return lock
 
 
 async def _lang(message: Message) -> str:
@@ -78,8 +89,11 @@ async def _ask_description(message: Message, state: FSMContext) -> None:
 
 @router.message(Report.photo, is_image)
 async def got_photo(message: Message, state: FSMContext) -> None:
+    if message.document and (message.document.file_size or 0) > MAX_BYTES:
+        await message.answer(t(await _lang(message), "report_photo_too_big"))
+        return
     file_id = message.photo[-1].file_id if message.photo else message.document.file_id
-    async with _photo_locks[message.chat.id]:
+    async with _photo_lock(message.chat.id):
         photos = (await state.get_data()).get("photos", [])
         if len(photos) >= MAX_PHOTOS:
             return

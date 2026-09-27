@@ -171,10 +171,15 @@ def set_status(session: Session, signal_id: int, status: str, violation_type: st
 
 
 def resolve_confirmed_for_parcel(session: Session, parcel_id: int) -> list[Signal]:
-    """Перевести подтверждённые сигналы участка (и их повторы) в «устранено» (без commit)."""
-    signals = session.exec(
-        select(Signal).where(Signal.parcel_id == parcel_id, Signal.status == "confirmed")
+    """Перевести подтверждённые сигналы участка и их повторы (где бы те ни лежали) в «устранено» (без commit)."""
+    primaries = session.exec(
+        select(Signal).where(Signal.parcel_id == parcel_id, Signal.duplicate_of.is_(None), Signal.status == "confirmed")
     ).all()
+    ids = [s.id for s in primaries]
+    dups = session.exec(
+        select(Signal).where(Signal.duplicate_of.in_(ids), Signal.status == "confirmed")
+    ).all() if ids else []
+    signals = list(primaries) + list(dups)
     for s in signals:
         s.status = "resolved"
         s.updated_at = utcnow()

@@ -92,15 +92,18 @@ def fetch_series(geometry: dict) -> tuple[list[str], list[float | None]]:
             "resy": 0.0001,
         },
     }
-    with httpx.Client(timeout=60) as client:
-        headers = {"Authorization": f"Bearer {_access_token(client)}"}
-        response = None
-        for url in STATS_URLS:
-            response = client.post(url, json=body, headers=headers)
-            if response.status_code != 404:
-                break
-        if response.status_code != 200:
-            raise NdviError(f"Copernicus Statistical API: {response.status_code} {response.text[:200]}")
+    try:
+        with httpx.Client(timeout=60) as client:
+            headers = {"Authorization": f"Bearer {_access_token(client)}"}
+            response = None
+            for url in STATS_URLS:
+                response = client.post(url, json=body, headers=headers)
+                if response.status_code != 404:
+                    break
+    except httpx.HTTPError as exc:
+        raise NdviError(f"Copernicus недоступен, попробуйте позже ({type(exc).__name__})") from exc
+    if response.status_code != 200:
+        raise NdviError(f"Copernicus Statistical API: {response.status_code} {response.text[:200]}")
     by_month: dict[str, float | None] = {}
     for item in response.json().get("data", []):
         month = item["interval"]["from"][:7]

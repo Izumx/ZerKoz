@@ -25,9 +25,14 @@ def _signal_view(session: Session, code: str) -> tuple | None:
     return signal, parcel.cadastral_no if parcel else None
 
 
-def signal_place(lang: str, lat: float, lon: float, cadastral_no: str | None) -> str:
+PUBLIC_COORD_DIGITS = 3  # чужой сигнал — только район (~100 м), точная точка видна лишь автору
+
+
+def signal_place(lang: str, lat: float, lon: float, cadastral_no: str | None, *, exact: bool = True) -> str:
     if cadastral_no:
         return t(lang, "place_parcel", cad=html.escape(cadastral_no))
+    if not exact:
+        lat, lon = round(lat, PUBLIC_COORD_DIGITS), round(lon, PUBLIC_COORD_DIGITS)
     return t(lang, "place_point", lat=lat, lon=lon)
 
 
@@ -51,7 +56,8 @@ async def answer_status(message: Message, lang: str, kind: str, code: str) -> No
             return
         signal, cadastral_no = view
         emoji, status_name, hint = signal_status(lang, signal.status)
-        text = t(lang, "signal_card", code=signal.code, place=signal_place(lang, signal.lat, signal.lon, cadastral_no),
+        text = t(lang, "signal_card", code=signal.code, place=signal_place(lang, signal.lat, signal.lon, cadastral_no,
+                                                          exact=signal.tg_chat_id == message.chat.id),
                  emoji=emoji, status=status_name, hint=hint, updated=fmt_dt(signal.updated_at))
     await message.answer(text, reply_markup=kb.main_menu(lang))
 

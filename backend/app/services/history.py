@@ -1,5 +1,8 @@
 from datetime import date, datetime
 
+from collections import defaultdict
+
+from sqlalchemy import and_, or_
 from sqlmodel import Session, select
 
 from app.models import Event
@@ -18,9 +21,13 @@ def log(session: Session, entity: str, entity_id: int, action: str, payload: dic
 
 def for_entities(session: Session, pairs: list[tuple[str, int]]) -> list[dict]:
     """История нескольких объектов (участок + его сигналы), новые сверху."""
-    events = []
+    if not pairs:
+        return []
+    ids_by_entity: dict[str, list[int]] = defaultdict(list)
     for entity, entity_id in pairs:
-        events += session.exec(select(Event).where(Event.entity == entity, Event.entity_id == entity_id)).all()
+        ids_by_entity[entity].append(entity_id)
+    condition = or_(*(and_(Event.entity == entity, Event.entity_id.in_(ids)) for entity, ids in ids_by_entity.items()))
+    events = list(session.exec(select(Event).where(condition)).all())
     events.sort(key=lambda e: (e.created_at, e.id), reverse=True)
     return [
         {
