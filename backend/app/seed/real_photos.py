@@ -1,7 +1,8 @@
-"""Настоящие фотографии для сигналов жителей из открытых источников (Wikimedia Commons).
+"""Настоящие фотографии для демо-данных из открытых источников (Wikimedia Commons).
 
-Авторы и лицензии — в photos/ATTRIBUTION.md. Входят в демо-данные generate; для уже заполненной базы
-`python -m app.seed.real_photos` заменяет нарисованные заглушки у демо-сигналов и добавляет сигналы из SPECS.
+Авторы и лицензии — в photos/ATTRIBUTION.md. Используются генератором демо-данных и кнопкой «Демо: сигнал жителя»;
+для уже заполненной базы `python -m app.seed.real_photos` заменяет прежние нарисованные заглушки
+(у демо-сигналов и в фотофиксации инспектора) и добавляет сигналы из SPECS.
 """
 import random
 from datetime import timedelta
@@ -10,7 +11,7 @@ from pathlib import Path
 from sqlmodel import Session, select
 
 from app import db
-from app.models import Parcel, Photo, PhotoBlob, Signal, utcnow
+from app.models import Event, Parcel, Photo, PhotoBlob, Signal, utcnow
 from app.services import geo, history, signals
 from app.services.photos import save_photo
 
@@ -28,8 +29,70 @@ SEED_SIGNAL_PHOTOS = {
 }
 
 
+# фотофиксация инспектора на участках с нарушением: (тип, назначение) → фото по кругу; (тип, None) — для остальных
+INSPECTOR_PHOTOS = {
+    ("unused", "agri"): ["insp_field_1.jpg", "insp_field_2.jpg"],  # степь Жамбылской области
+    ("unused", None): ["insp_lot_1.jpg", "insp_lot_2.jpg", "insp_lot_3.jpg"],
+    ("seizure", None): ["insp_fences.jpg"],
+    ("dump", None): ["insp_industrial.jpg"],
+}
+
+# кнопка «Демо: сигнал жителя» — фото того же типа, что и описание
+DEMO_PHOTOS = {
+    "dump": ["household_dump.jpg", "roadside_dump.jpg", "steppe_dump.jpg", "tires_dump.jpg", "mattresses.jpg"],
+    "unused": ["tall_weeds.jpg", "weeds.jpg"],
+    "seizure": ["fence.jpg", "fence_path.jpg"],
+}
+
+
+def _read(filename: str) -> bytes:
+    return (PHOTOS_DIR / filename).read_bytes()
+
+
 def seed_photo(description: str) -> bytes:
-    return (PHOTOS_DIR / SEED_SIGNAL_PHOTOS[description]).read_bytes()
+    return _read(SEED_SIGNAL_PHOTOS[description])
+
+
+def demo_photo(kind: str, rng: random.Random) -> bytes:
+    return _read(rng.choice(DEMO_PHOTOS[kind]))
+
+
+def _replace_photos(session: Session, photos: list[Photo], data: bytes, **owner) -> bool:
+    """Оставить у владельца одно фото data; False — если оно уже такое."""
+    blobs = session.exec(select(PhotoBlob).where(PhotoBlob.photo_id.in_([p.id for p in photos]))).all()         if photos else []
+    if len(blobs) == 1 and blobs[0].data == data:
+        return False
+    for b in blobs:
+        session.delete(b)
+    session.flush()
+    for p in photos:
+        session.delete(p)
+    session.flush()
+    save_photo(session, data, **owner)
+    return True
+
+
+def set_inspector_photos(session: Session) -> list[Parcel]:
+    """Фотофиксация инспектора на участках с нарушением. Участки, куда инспектор сам загружал фото, не трогаем."""
+    manual = set(session.exec(select(Event.entity_id).where(Event.entity == "parcel", Event.action == "photos")).all())
+    counters: dict[tuple, int] = {}
+    changed = []
+    red = session.exec(select(Parcel).where(Parcel.lifecycle.in_(("detected", "in_progress")))
+                       .order_by(Parcel.id)).all()
+    for parcel in red:
+        key = (parcel.violation_type, parcel.purpose)
+        if key not in INSPECTOR_PHOTOS:
+            key = (parcel.violation_type, None)
+        if key not in INSPECTOR_PHOTOS or parcel.id in manual:
+            continue
+        pool = INSPECTOR_PHOTOS[key]
+        filename = pool[counters.get(key, 0) % len(pool)]
+        counters[key] = counters.get(key, 0) + 1
+        photos = session.exec(select(Photo).where(Photo.parcel_id == parcel.id, Photo.source == "inspector")).all()
+        if _replace_photos(session, list(photos), _read(filename), parcel_id=parcel.id, source="inspector"):
+            changed.append(parcel)
+    session.commit()
+    return changed
 
 
 def replace_seed_placeholders(session: Session) -> list[Signal]:
@@ -38,19 +101,9 @@ def replace_seed_placeholders(session: Session) -> list[Signal]:
     rows = session.exec(select(Signal).where(Signal.source == "seed",
                                              Signal.description.in_(list(SEED_SIGNAL_PHOTOS)))).all()
     for s in rows:
-        data = seed_photo(s.description)
         photos = session.exec(select(Photo).where(Photo.signal_id == s.id)).all()
-        blobs = session.exec(select(PhotoBlob).where(PhotoBlob.photo_id.in_([p.id for p in photos]))).all()             if photos else []
-        if len(blobs) == 1 and blobs[0].data == data:
-            continue
-        for b in blobs:
-            session.delete(b)
-        session.flush()
-        for p in photos:
-            session.delete(p)
-        session.flush()
-        save_photo(session, data, signal_id=s.id, source="citizen")
-        replaced.append(s)
+        if _replace_photos(session, list(photos), seed_photo(s.description), signal_id=s.id, source="citizen"):
+            replaced.append(s)
     session.commit()
     return replaced
 
@@ -122,8 +175,11 @@ def main() -> None:
 
     with db.new_session() as session:
         replaced = replace_seed_placeholders(session)
+        inspected = set_inspector_photos(session)
         created = add_real_photo_signals(session)
     print(f"Заглушки заменены настоящими фото: {len(replaced)}{codes(replaced)}")
+    print(f"Фотофиксация инспектора обновлена на участках: {len(inspected)}"
+          + (f" ({', '.join(p.cadastral_no for p in inspected)})" if inspected else ""))
     print(f"Добавлено сигналов с настоящими фото: {len(created)}{codes(created)}")
 
 

@@ -11,7 +11,7 @@ import urllib.request
 from sqlmodel import Session, select
 
 from app.models import Parcel, Signal
-from app.seed.placeholder import make_photo
+from app.seed.real_photos import demo_photo
 from app.services import geo, signals
 
 DESCRIPTIONS = [
@@ -22,8 +22,6 @@ DESCRIPTIONS = [
     ("seizure", "Сосед поставил забор и занял часть общего проезда"),
     ("seizure", "Построили сарай на чужой (государственной) земле"),
 ]
-CAPTIONS = {"dump": "Свалка", "unused": "Заброшенный участок", "seizure": "Самозахват"}
-
 
 def simulate_signal(session: Session, rng: random.Random | None = None) -> Signal:
     rng = rng or random.Random()
@@ -33,8 +31,8 @@ def simulate_signal(session: Session, rng: random.Random | None = None) -> Signa
     else:
         lat, lon = 42.9 + rng.uniform(-0.02, 0.02), 71.37 + rng.uniform(-0.03, 0.03)
     kind, text = rng.choice(DESCRIPTIONS)
-    photo = make_photo(kind, f"Народный контроль · {CAPTIONS[kind]}", rng)
-    return signals.create_signal(session, lat=lat, lon=lon, description=text, source="demo", photos=[photo])
+    return signals.create_signal(session, lat=lat, lon=lon, description=text, source="demo",
+                                 photos=[demo_photo(kind, rng)])
 
 
 def main() -> None:

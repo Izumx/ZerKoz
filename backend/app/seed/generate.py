@@ -13,14 +13,11 @@ from app import db
 from app.config import settings
 from app.models import Application, Event, Parcel, Signal, utcnow
 from app.seed.data import APPLICATIONS, CLUSTERS, OWNERS
-from app.seed.placeholder import make_photo
-from app.seed.real_photos import add_real_photo_signals, seed_photo
+from app.seed.real_photos import add_real_photo_signals, seed_photo, set_inspector_photos
 from app.services import geo, history, signals
-from app.services.photos import save_photo
 from app.timeutil import today_kz
 
 M_PER_DEG = geo.M_PER_DEG
-CAPTION = {"dump": "Свалка", "unused": "Неиспользование", "seizure": "Самозахват"}
 VIOLATION_BY_PURPOSE = {"agri": "unused", "izhs": "unused", "lph": "seizure", "commercial": "seizure",
                         "industrial": "dump"}
 
@@ -138,9 +135,6 @@ def apply_scenarios(session: Session, parcels: list[Parcel], rng: random.Random)
         session.flush()
         backdate_events(session, "parcel", parcel.id, start_days_ago=40)
         if lifecycle in ("detected", "in_progress"):
-            for k in range(rng.randint(1, 2)):
-                photo = make_photo(vt, f"Фотофиксация инспектора · {CAPTION[vt]}", rng)
-                save_photo(session, photo, parcel_id=parcel.id, source="inspector")
             groups["red"].append(parcel)
         elif under_check:
             groups["check"].append(parcel)
@@ -204,6 +198,7 @@ def generate(session: Session, seed: int = 2026) -> None:
     rng = random.Random(seed)
     parcels = create_parcels(session, rng)
     groups = apply_scenarios(session, parcels, rng)
+    set_inspector_photos(session)
     create_signals(session, groups, rng)
     add_real_photo_signals(session, rng)
     create_applications(session)
