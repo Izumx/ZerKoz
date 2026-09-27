@@ -14,6 +14,7 @@ from app.config import settings
 from app.models import Application, Event, Parcel, Signal, utcnow
 from app.seed.data import APPLICATIONS, CLUSTERS, OWNERS
 from app.seed.placeholder import make_photo
+from app.seed.real_photos import add_real_photo_signals
 from app.services import geo, history, signals
 from app.services.photos import save_photo
 from app.timeutil import today_kz
@@ -205,6 +206,7 @@ def generate(session: Session, seed: int = 2026) -> None:
     parcels = create_parcels(session, rng)
     groups = apply_scenarios(session, parcels, rng)
     create_signals(session, groups, rng)
+    add_real_photo_signals(session, rng)
     create_applications(session)
 
 

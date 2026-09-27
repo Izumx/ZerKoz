@@ -3,6 +3,7 @@ from sqlmodel import select
 from app.models import Application, Parcel, Signal
 from app.seed.generate import generate
 from app.seed.import_geojson import import_features
+from app.seed.real_photos import add_real_photo_signals
 from app.services import parcels, stats
 
 
@@ -14,8 +15,12 @@ def test_generate_produces_demo_dataset(session):
     assert d["yellow"] >= 5
     assert session.exec(select(Application).where(Application.track_no == "KZ-2026-042")).one()
     all_signals = session.exec(select(Signal).order_by(Signal.id)).all()
-    assert len(all_signals) == 7
-    assert all_signals[-1].duplicate_of == all_signals[0].id  # повторное сообщение о той же свалке
+    assert len(all_signals) == 12
+    assert all_signals[6].duplicate_of == all_signals[0].id  # повторное сообщение о той же свалке
+    real = all_signals[7:]  # сигналы с настоящими фото: отдельные, не повторы
+    assert all(s.duplicate_of is None for s in real)
+    assert sum(s.parcel_id is not None for s in real) == 3
+    assert add_real_photo_signals(session) == []  # повторный запуск ничего не дублирует
     # участки не пересекаются — иначе привязка сигнала неоднозначна
     from shapely.geometry import shape
     shapes = [shape(p.geometry) for p in session.exec(select(Parcel)).all()]
