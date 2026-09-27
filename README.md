@@ -6,7 +6,7 @@
 
 Хакатон ZhambylHub 2026 · команда **IZANTRIA**
 
-[**🌐 Открыть панель**](https://144-24-202-61.sslip.io) · [**🤖 Telegram-бот @zerkozllmbot**](https://t.me/zerkozllmbot) · [**🎬 Сценарий демо**](docs/demo-script.md)
+[**🌐 Открыть панель**](https://144-24-202-61.sslip.io) · [**🤖 Telegram-бот @zerkozllmbot**](https://t.me/zerkozllmbot)
 
 </div>
 
@@ -178,9 +178,7 @@ pytest
 
 ---
 
-## 🚀 Деплой
-
-### Свой сервер (Oracle Cloud Always Free или любой VPS)
+## 🚀 Деплой (Oracle Cloud Always Free или любой VPS)
 
 Сервис, PostgreSQL и Caddy (HTTPS от Let's Encrypt) поднимаются одной командой через Docker Compose. Работает на ARM (Ampere A1) и x86. Так развёрнута [демо-версия](https://144-24-202-61.sslip.io).
 
@@ -190,12 +188,6 @@ pytest
 4. Выкатка текущего коммита с Windows: `.\deploy\deploy.ps1 -Server ubuntu@IP -Key путь\к\ключу`. С Linux/macOS те же шаги: `git archive` → `scp` → `docker compose --env-file deploy/.env up -d --build`.
 
 При первом старте база заполняется демо-данными (`SEED_ON_START=true`), бот сам переключается на webhook и получает кнопку мини-приложения.
-
-### Render (бесплатно)
-
-1. [render.com](https://render.com) → **New → Blueprint** → репозиторий. `render.yaml` создаст веб-сервис (Docker) и PostgreSQL.
-2. Заполните `BOT_TOKEN` и по желанию `INSPECTOR_PASSWORD`, `COPERNICUS_CLIENT_ID/SECRET`.
-3. Бот сам перейдёт на webhook (адрес берётся из `RENDER_EXTERNAL_URL`), поэтому «засыпание» бесплатного сервиса ему не мешает.
 
 ---
 
@@ -245,11 +237,8 @@ frontend/src/
   i18n.tsx           словарь RU/KZ
 deploy/              Caddyfile, установка сервера, скрипт выкатки
 docker-compose.yml   приложение + PostgreSQL + Caddy
-Dockerfile, render.yaml
-docs/
-  demo-script.md     сценарий 3-минутной демонстрации
-  screenshots/       скриншоты и GIF (пересоздаются capture.py)
-  kz-review/         все казахские тексты для вычитки
+Dockerfile           образ: сборка панели + бэкенд
+docs/screenshots/    скриншоты и GIF для README
 ```
 
 ---
