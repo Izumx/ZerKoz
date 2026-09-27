@@ -31,3 +31,4 @@ dist/
 *.swo
 .DS_Store
 Thumbs.db
+deploy/.env

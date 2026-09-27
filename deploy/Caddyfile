@@ -1,0 +1,9 @@
+# HTTPS-сертификат Caddy получает сам (Let's Encrypt) — нужен только открытый 80/443 и домен, указывающий на сервер.
+# Без своего домена подойдёт <ip-через-дефисы>.sslip.io, например 130-61-12-34.sslip.io
+{$DOMAIN} {
+	encode gzip
+	reverse_proxy app:8000 {
+		# Server-Sent Events: отдавать события сразу, без буферизации
+		flush_interval -1
+	}
+}
