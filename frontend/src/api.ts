@@ -67,14 +67,6 @@ export interface ParcelDetail extends ParcelProps {
   history: HistoryItem[]
 }
 
-export interface AiSuggestion {
-  violation_type: ViolationType | 'none'
-  confidence: 'low' | 'medium' | 'high'
-  summary_ru: string
-  summary_kz: string
-  model: string
-}
-
 export interface SignalItem {
   id: number
   code: string
@@ -89,7 +81,6 @@ export interface SignalItem {
   duplicate_of: { id: number; code: string } | null
   reports: number
   suggested_violation: ViolationType | null
-  ai: AiSuggestion | null
   photos: Photo[]
   created_at: string
   updated_at: string
@@ -140,7 +131,6 @@ export interface SessionInfo {
   authenticated: boolean
   demo_mode: boolean
   sentinel_enabled: boolean
-  ai_enabled: boolean
   bot_username: string | null
 }
 

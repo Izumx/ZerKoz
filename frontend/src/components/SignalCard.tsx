@@ -32,7 +32,7 @@ export default function SignalCard({ id, version, onClose, onChanged, onPick, no
 
   if (!signal || signal.id !== id) return <div className="drawer__loading" />
 
-  // предвыбор: подсказка ИИ → ключевые слова описания → свалка
+  // предвыбор: ключевые слова описания → свалка
   const chosen: ViolationType = violation ?? signal.suggested_violation ?? 'dump'
 
   const setStatus = async (status: SignalStatus) => {
@@ -52,7 +52,6 @@ export default function SignalCard({ id, version, onClose, onChanged, onPick, no
   const source = signal.source === 'telegram' ? i.t('sourceTelegram') : signal.source === 'demo' ? i.t('sourceDemo') : i.t('sourceSeed')
   const st = signal.status
   const canConfirm = st === 'new' || st === 'checking'
-  const ai = signal.ai
 
   return (
     <>
@@ -88,18 +87,6 @@ export default function SignalCard({ id, version, onClose, onChanged, onPick, no
 
         {signal.description && <blockquote className="quote">{signal.description}</blockquote>}
 
-        {ai && (
-          <div className={`ai-box ai-box--${ai.violation_type === 'none' ? 'none' : 'hit'}`}>
-            <div className="ai-box__head">
-              <span className="ai-box__badge">✦ {i.t('aiTitle')}</span>
-              <strong>{ai.violation_type === 'none' ? i.t('aiNone') : i.d.violation[ai.violation_type]}</strong>
-              <span className="muted small">· {i.d.aiConfidence[ai.confidence]}</span>
-            </div>
-            <p>{i.lang === 'kz' ? ai.summary_kz : ai.summary_ru}</p>
-            <p className="muted small">{i.t('aiNote')}</p>
-          </div>
-        )}
-
         <dl className="facts facts--one">
           <div>
             <dt>{i.t('location')}</dt>
@@ -132,7 +119,7 @@ export default function SignalCard({ id, version, onClose, onChanged, onPick, no
                       </option>
                     ))}
                   </select>
-                  {!ai && signal.suggested_violation && violation === null && (
+                  {signal.suggested_violation && violation === null && (
                     <span className="muted small">{i.t('suggestedByText')}</span>
                   )}
                 </div>

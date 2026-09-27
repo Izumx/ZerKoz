@@ -120,7 +120,7 @@ def test_panel_requires_password_when_set(session, monkeypatch):
     assert client.get("/api/parcels").status_code == 401
     assert client.get("/api/session").json() == {
         "auth_required": True, "authenticated": False, "demo_mode": True, "bot_username": None,
-        "sentinel_enabled": False, "ai_enabled": False}
+        "sentinel_enabled": False}
     assert client.post("/api/login", json={"password": "wrong"}).status_code == 401
     assert client.post("/api/login", json={"password": "secret"}).status_code == 200
     assert client.get("/api/parcels").status_code == 200
@@ -209,14 +209,6 @@ def test_webhook_rejects_wrong_secret(monkeypatch):
 
 
 # ---------- регрессии из ревью ----------
-
-def test_ai_none_does_not_become_suggestion(session):
-    s = signals.create_signal(session, lat=42.0, lon=71.0, description="Свалка мусора")
-    s.ai = {"violation_type": "none", "confidence": "high", "summary_ru": "", "summary_kz": "", "model": "m"}
-    session.add(s)
-    session.commit()
-    assert signals.signal_dict(session, s)["suggested_violation"] == "dump"  # по описанию, не «none»
-
 
 def test_ndvi_nan_month_becomes_none(session, monkeypatch):
     import httpx

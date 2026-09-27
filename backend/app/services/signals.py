@@ -22,7 +22,7 @@ MAX_DESCRIPTION = 1000
 DUPLICATE_RADIUS_M = 50
 DUPLICATE_WINDOW = timedelta(days=7)
 
-# ключевые слова (RU + KZ) → тип нарушения; используется, если ИИ-анализ не подключён
+# ключевые слова (RU + KZ) → тип нарушения, предлагаемый инспектору по описанию жителя
 KEYWORDS = {
     "dump": ("мусор", "свалк", "отход", "помойк", "хлам", "бытов", "покрышк", "шин", "қоқыс", "үйінді", "қалдық"),
     "seizure": ("забор", "захват", "занял", "заняли", "построил", "сарай", "самовол", "пристрой", "огородил",
@@ -115,10 +115,6 @@ def create_signal(
                                    "duplicate_of": primary.code if primary else None})
     if signal.parcel_id:
         bus.publish("parcel.updated", {"id": signal.parcel_id})
-    if photos and source != "seed":
-        from app.services import ai_vision
-
-        ai_vision.schedule(signal.id)
     return signal
 
 
@@ -232,9 +228,7 @@ def _signal_dicts(session: Session, signals: list[Signal], *, full: bool) -> lis
             "duplicate_of": {"id": signal.duplicate_of, "code": primary_codes.get(signal.duplicate_of)}
             if signal.duplicate_of else None,
             "reports": len(group),
-            # ai_vision.analyze сам переносит уверенный вердикт ИИ сюда; «none» и низкая уверенность не подставляются
             "suggested_violation": signal.suggested_violation,
-            "ai": signal.ai,
             "photos": [photo_dict(p) for p in photos_by[signal.id]],
             "created_at": signal.created_at.isoformat(),
             "updated_at": signal.updated_at.isoformat(),

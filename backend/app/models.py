@@ -52,7 +52,6 @@ class Signal(SQLModel, table=True):
     # повторное сообщение о том же месте: статус ведёт основной сигнал
     duplicate_of: int | None = Field(default=None, foreign_key="signal.id", index=True)
     suggested_violation: str | None = None
-    ai: dict | None = Field(default=None, sa_type=JSONB)
     created_at: datetime = _ts()
     updated_at: datetime = _ts()
 

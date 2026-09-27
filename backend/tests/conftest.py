@@ -19,7 +19,6 @@ def _database():
     # тесты не зависят от локального .env: панель открыта, демо включено, внешние API выключены
     settings.inspector_password = ""
     settings.demo_mode = True
-    settings.anthropic_api_key = ""
     settings.copernicus_client_id = settings.copernicus_client_secret = ""
     url = _test_url()
     db.ensure_database(url)

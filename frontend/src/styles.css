@@ -1220,7 +1220,7 @@ button {
   }
 }
 
-/* ---------- v1.1: вход, заявления, маршрут, ИИ, акт ---------- */
+/* ---------- v1.1: вход, заявления, маршрут, акт ---------- */
 .tabs button {
   font-size: 12.5px;
   padding-inline: 2px;
@@ -1235,10 +1235,6 @@ button {
 .badge--reports {
   background: #ece8fb;
   color: var(--signal);
-}
-.badge--ai {
-  background: var(--ink);
-  color: var(--warn);
 }
 .badge--stage-review {
   background: var(--paper-2);
@@ -1279,40 +1275,6 @@ button {
   border-radius: 8px;
   background: #ece8fb;
   font-size: 13px;
-}
-.ai-box {
-  margin-bottom: 16px;
-  padding: 12px 14px;
-  border-radius: var(--radius);
-  background: var(--ink);
-  color: var(--paper);
-}
-.ai-box p {
-  margin: 6px 0 0;
-  font-size: 13.5px;
-}
-.ai-box .muted {
-  color: #a9b6c4;
-}
-.ai-box__head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 6px;
-}
-.ai-box__badge {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--warn);
-}
-.ai-box--none {
-  background: var(--paper-2);
-  color: var(--ink);
-}
-.ai-box--none .muted {
-  color: var(--ink-2);
 }
 .photo-cell {
   margin: 0;

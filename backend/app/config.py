@@ -33,8 +33,6 @@ class Settings(BaseSettings):
     signals_per_day: int = 20
 
     # опциональные интеграции
-    anthropic_api_key: str = ""
-    anthropic_model: str = "claude-opus-5"
     copernicus_client_id: str = ""
     copernicus_client_secret: str = ""
 

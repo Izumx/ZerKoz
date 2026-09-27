@@ -175,7 +175,6 @@ export default function Sidebar(props: Props) {
                         <span className="mono">{s.code}</span>
                         <span className={`badge badge--${s.status}`}>{i.d.signalStatus[s.status]}</span>
                         {s.reports > 1 && <span className="badge badge--reports">👥 {s.reports}</span>}
-                        {s.ai && s.ai.violation_type !== 'none' && <span className="badge badge--ai">✦</span>}
                       </span>
                       <span className="row__sub clamp">{s.description || '—'}</span>
                       <span className="row__meta">

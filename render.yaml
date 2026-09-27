@@ -22,8 +22,6 @@ services:
         value: "true"
       - key: DEMO_MODE
         value: "true"
-      - key: ANTHROPIC_API_KEY
-        sync: false # необязательно: ИИ-подсказки по фото
       - key: COPERNICUS_CLIENT_ID
         sync: false # необязательно: реальный NDVI Sentinel-2
       - key: COPERNICUS_CLIENT_SECRET
