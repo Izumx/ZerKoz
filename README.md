@@ -132,6 +132,17 @@ pytest
 
 ---
 
+## Деплой на свой сервер (Oracle Cloud Always Free, любой VPS)
+
+Сервис, PostgreSQL и Caddy (HTTPS от Let's Encrypt) поднимаются одной командой через Docker Compose. Работает на ARM (Ampere A1) и x86.
+
+1. В облаке откройте входящие TCP-порты **80** и **443** (Oracle: VCN → Security List → Ingress Rules, *Destination* Port Range).
+2. Подготовьте сервер (Docker и файрвол ОС): `scp deploy/setup-server.sh ubuntu@IP:/tmp/ && ssh ubuntu@IP "sudo bash /tmp/setup-server.sh"`.
+3. На сервере создайте `/opt/zherkoz/deploy/.env` по образцу `deploy/.env.example`. Без своего домена используйте `DOMAIN=<IP-через-дефисы>.sslip.io`.
+4. Выкатка текущего коммита с Windows: `.\deploy\deploy.ps1 -Server ubuntu@IP -Key путь\к\ключу` (с Linux/macOS — те же шаги: `git archive`, `scp`, `docker compose --env-file deploy/.env up -d --build`).
+
+При первом старте база заполняется демо-данными (`SEED_ON_START=true`), бот сам переключается на webhook и получает кнопку мини-приложения.
+
 ## Деплой (Render, бесплатно)
 
 1. Загрузите репозиторий на GitHub.
