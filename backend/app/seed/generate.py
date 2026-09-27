@@ -14,7 +14,7 @@ from app.config import settings
 from app.models import Application, Event, Parcel, Signal, utcnow
 from app.seed.data import APPLICATIONS, CLUSTERS, OWNERS
 from app.seed.placeholder import make_photo
-from app.seed.real_photos import add_real_photo_signals
+from app.seed.real_photos import add_real_photo_signals, seed_photo
 from app.services import geo, history, signals
 from app.services.photos import save_photo
 from app.timeutil import today_kz
@@ -172,10 +172,9 @@ def create_signals(session: Session, groups: dict[str, list[Parcel]], rng: rando
         (None, "dump", "Стихийная свалка у обочины трассы Тараз — Шымкент", "new", 0.6),
     ]
     first = None
-    for parcel, kind, text, status, days_ago in specs:
+    for parcel, _kind, text, status, days_ago in specs:
         lat, lon = point(parcel) if parcel else (42.8870, 71.3000)
-        photo = make_photo(kind, f"Народный контроль · {CAPTION[kind]}", rng)
-        s = signals.create_signal(session, lat=lat, lon=lon, description=text, source="seed", photos=[photo])
+        s = signals.create_signal(session, lat=lat, lon=lon, description=text, source="seed", photos=[seed_photo(text)])
         first = first or s
         if status != "new":
             s.status = status
@@ -186,9 +185,9 @@ def create_signals(session: Session, groups: dict[str, list[Parcel]], rng: rando
         backdate_events(session, "signal", s.id, start_days_ago=int(days_ago))
     session.commit()
     # второй житель сообщает о той же свалке в ~12 м — сигнал автоматически станет повтором первого
+    dup_text = "Мусор так и лежит, уже пахнет"
     dup = signals.create_signal(session, lat=first.lat + 0.0001, lon=first.lon + 0.00005,
-                                description="Мусор так и лежит, уже пахнет", source="seed",
-                                photos=[make_photo("dump", "Народный контроль · Свалка", rng)])
+                                description=dup_text, source="seed", photos=[seed_photo(dup_text)])
     dup.created_at = dup.updated_at = utcnow() - timedelta(hours=2)
     session.add(dup)
     session.commit()

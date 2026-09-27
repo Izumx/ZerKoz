@@ -3,7 +3,7 @@ from sqlmodel import select
 from app.models import Application, Parcel, Signal
 from app.seed.generate import generate
 from app.seed.import_geojson import import_features
-from app.seed.real_photos import add_real_photo_signals
+from app.seed.real_photos import add_real_photo_signals, replace_seed_placeholders
 from app.services import parcels, stats
 
 
@@ -21,6 +21,7 @@ def test_generate_produces_demo_dataset(session):
     assert all(s.duplicate_of is None for s in real)
     assert sum(s.parcel_id is not None for s in real) == 3
     assert add_real_photo_signals(session) == []  # повторный запуск ничего не дублирует
+    assert replace_seed_placeholders(session) == []  # у демо-сигналов уже настоящие фото, а не заглушки
     # участки не пересекаются — иначе привязка сигнала неоднозначна
     from shapely.geometry import shape
     shapes = [shape(p.geometry) for p in session.exec(select(Parcel)).all()]
@@ -44,3 +45,19 @@ def test_import_polygon_and_point(session):
     assert parcels.compute_color(point_parcel, 0) == "green"
     from app.services import geo
     assert 2.4 < geo.area_ha(point_parcel.geometry) < 2.6
+
+
+def test_replace_seed_placeholders_swaps_drawn_photo(session):
+    from app.models import Photo, PhotoBlob
+    from app.seed.placeholder import make_photo
+    from app.seed.real_photos import seed_photo
+    from app.services import signals
+
+    text = "Кучка листвы у забора"
+    s = signals.create_signal(session, lat=42.0, lon=71.0, description=text, source="seed",
+                              photos=[make_photo("dump", "заглушка", __import__("random").Random(1))])
+    assert [x.id for x in replace_seed_placeholders(session)] == [s.id]
+    photos = session.exec(select(Photo).where(Photo.signal_id == s.id)).all()
+    assert len(photos) == 1
+    assert session.exec(select(PhotoBlob).where(PhotoBlob.photo_id == photos[0].id)).one().data == seed_photo(text)
+    assert replace_seed_placeholders(session) == []
