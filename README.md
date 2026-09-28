@@ -6,7 +6,7 @@
 
 Хакатон ZhambylHub 2026 · команда **IZANTRIA**
 
-[**🌐 Открыть панель**](https://144-24-202-61.sslip.io) · [**🤖 Telegram-бот @zerkozllmbot**](https://t.me/zerkozllmbot)
+[**🌐 Открыть панель**](https://144-24-202-61.sslip.io) · [**🤖 Telegram-бот @zerkozllmbot**](https://t.me/zerkozllmbot) · [**💻 Код на GitHub**](https://github.com/Izumx/ZerKoz)
 
 </div>
 
